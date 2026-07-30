@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.pytest_cache/
+logs/
+data/*.db
+# SQLite WAL mode creates these sidecars alongside the db file.
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+data/recordings/
+data/_tts_*.wav
+.playwright-mcp/
+.DS_Store
+data/transcripts/

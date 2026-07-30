@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Collections dashboard · Sarvam AI</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+<header>
+  <div>
+    <h1>Collections dashboard</h1>
+    <div class="sub">Every row below is read from the database — CDRs, dispositions, PTPs, tool ledger, QA scores</div>
+  </div>
+  <nav>
+    <a href="/">Live call</a>
+    <a href="/docs" target="_blank" rel="noreferrer">API</a>
+    <a href="#" id="refresh">Refresh</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <section class="card" style="margin-bottom:16px">
+    <h2>Portfolio <span class="right hint" id="cov"></span></h2>
+    <div class="body"><div class="metrics" id="kpis" style="grid-template-columns:repeat(6,1fr)"></div></div>
+  </section>
+
+  <div class="grid" style="grid-template-columns: minmax(0,1.6fr) minmax(0,1fr)">
+    <section class="card">
+      <h2>Calls (CDR)</h2>
+      <div class="body tight" style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Call</th><th>Borrower</th><th>Languages</th><th>Disposition</th>
+              <th class="num">Dur</th><th class="num">p50 ms</th><th class="num">₹ cost</th><th>QA</th>
+            </tr>
+          </thead>
+          <tbody id="calls"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <div style="display:flex; flex-direction:column; gap:16px">
+      <section class="card">
+        <h2>Call detail <span class="right hint">click a row</span></h2>
+        <div class="body" id="detail"><span class="hint">Select a call.</span></div>
+      </section>
+      <section class="card">
+        <h2>Sentiment mix</h2>
+        <div class="body"><div class="chips" id="sentiment"></div></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function metric(k, v, cls) {
+  return `<div class="metric ${cls || ''}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+}
+
+async function load() {
+  const [stats, calls] = await Promise.all([
+    fetch('/api/analytics/portfolio').then((r) => r.json()),
+    fetch('/api/calls?limit=100').then((r) => r.json()),
+  ]);
+
+  const roi = (await fetch('/api/stats').then((r) => r.json())).roi || {};
+  $('kpis').innerHTML =
+    metric('Calls', stats.total_calls) +
+    metric('Containment', `${stats.containment_pct}<small>%</small>`, 'good') +
+    metric('PTP rate', `${stats.ptp_rate_pct}<small>%</small>`, 'good') +
+    metric('PTP value', `₹${(stats.ptp_value_rupees || 0).toLocaleString('en-IN')}`) +
+    metric('Avg QA', `${stats.avg_qa_score}<small>/100</small>`,
+      stats.avg_qa_score >= 90 ? 'good' : 'warn') +
+    metric('Est. saving', `₹${(roi.total_saving_rupees || 0).toLocaleString('en-IN')}`, 'good');
+
+  $('cov').textContent =
+    `${stats.calls_scored}/${stats.total_calls} calls scored (${stats.qa_coverage_pct}% QA coverage — human sampling is ~2%)`;
+
+  $('sentiment').innerHTML = Object.entries(stats.sentiment_mix || {})
+    .map(([k, v]) => `<span class="chip ${k === 'negative' ? 'off' : k === 'positive' ? 'on' : ''}">${k}: ${v}</span>`)
+    .join('') || '<span class="hint">no scored calls yet</span>';
+
+  $('calls').innerHTML = calls.map((c) => {
+    // Every boolean flag must hold, not just a favourable subset — an
+    // out-of-window call is not a pass.
+    const flags = Object.entries(c.compliance || {}).filter(([k]) => k !== 'violation_tags');
+    const failed = flags.filter(([, v]) => v === false).map(([k]) => k);
+    const qa = flags.length
+      ? (failed.length === 0
+          ? '<span class="ok">pass</span>'
+          : `<span class="bad" title="failed: ${failed.join(', ')}">review (${failed.length})</span>`)
+      : '<span class="muted">–</span>';
+    const p50 = (c.latency_stats || {}).p50_end_to_first_audio_ms;
+    return `<tr data-id="${c.call_id}" style="cursor:pointer">
+      <td><code>${c.call_id.slice(0, 8)}</code></td>
+      <td>${c.borrower || c.loan_id}</td>
+      <td><code>${(c.languages_detected || []).join(', ') || '–'}</code></td>
+      <td>${c.disposition}</td>
+      <td class="num">${c.duration_s ? c.duration_s.toFixed(0) + 's' : '–'}</td>
+      <td class="num">${p50 ?? '–'}</td>
+      <td class="num">${c.cost_rupees ?? '–'}</td>
+      <td>${qa}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" class="hint">No calls yet — place one from the live page.</td></tr>';
+
+  document.querySelectorAll('#calls tr[data-id]').forEach((tr) => {
+    tr.onclick = () => showDetail(tr.dataset.id);
+  });
+}
+
+async function showDetail(id) {
+  const c = await fetch(`/api/calls/${id}`).then((r) => r.json());
+  const a = c.analytics;
+  const turns = (c.transcript || []).map((t) =>
+    `<div class="msg ${t.speaker}" style="max-width:100%"><span class="tag">${t.speaker}${t.language ? ' · ' + t.language : ''}</span>${t.text}</div>`
+  ).join('');
+  const tools = (c.tool_invocations || []).map((t) =>
+    `<div class="row"><span class="st ${t.status === 'SUCCEEDED' ? 'ok' : 'bad'}">${t.status === 'SUCCEEDED' ? '✓' : '✕'}</span>
+     <span class="nm">${t.name}</span><span class="dt">${JSON.stringify(t.result || t.error || {})} · idem ${t.idempotency_key}</span></div>`
+  ).join('') || '<div class="row"><span class="dt">none</span></div>';
+  const flags = Object.entries(c.compliance || {})
+    .filter(([k]) => k !== 'violation_tags')
+    .map(([k, v]) => `<span class="chip ${v ? 'on' : 'off'}">${v ? '✓' : '✕'} ${k}</span>`).join('');
+
+  $('detail').innerHTML = `
+    <div style="font-family:var(--mono); font-size:12px" class="hint">
+      ${c.correlation_id}<br>${c.channel} · ${c.disposition} · ${c.duration_s ?? '–'}s · ₹${c.cost_rupees}
+    </div>
+    <h3 style="font-size:12px; color:var(--muted); margin:14px 0 6px; text-transform:uppercase; letter-spacing:.06em">Compliance</h3>
+    <div class="chips">${flags || '<span class="hint">–</span>'}</div>
+    <h3 style="font-size:12px; color:var(--muted); margin:14px 0 6px; text-transform:uppercase; letter-spacing:.06em">Analytics</h3>
+    ${a ? `<div style="font-size:13px">
+        <b>Summary:</b> ${a.summary || '–'}<br>
+        <b>English:</b> ${a.summary_english || '–'}<br>
+        <b>Sentiment:</b> ${a.sentiment} (${a.sentiment_score}) ·
+        <b>Predicted:</b> ${a.disposition_predicted} · <b>QA:</b> ${a.qa_score}/100<br>
+        <b>Objections:</b> ${(a.objections || []).join(', ') || '–'}
+      </div>`
+      : `<button onclick="runAnalytics('${id}')">Run post-call analytics</button>`}
+    <h3 style="font-size:12px; color:var(--muted); margin:14px 0 6px; text-transform:uppercase; letter-spacing:.06em">Agentic actions</h3>
+    <div class="ledger">${tools}</div>
+    <h3 style="font-size:12px; color:var(--muted); margin:14px 0 6px; text-transform:uppercase; letter-spacing:.06em">Transcript</h3>
+    <div style="display:flex; flex-direction:column; gap:7px; max-height:340px; overflow-y:auto">${turns || '<span class="hint">–</span>'}</div>`;
+}
+
+async function runAnalytics(id) {
+  $('detail').innerHTML = '<span class="hint">running batch STT → diarization → sarvam-105b → QA scoring…</span>';
+  await fetch(`/api/analytics/${id}`, { method: 'POST' });
+  await showDetail(id);
+  load();
+}
+
+$('refresh').onclick = (e) => { e.preventDefault(); load(); };
+load();
+</script>
+</body>
+</html>

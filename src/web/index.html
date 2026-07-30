@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Piramal EMI Collections Agent · Sarvam AI</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+<header>
+  <div>
+    <h1>Piramal Finance · EMI Collections Voice Agent</h1>
+    <div class="sub">
+      Saaras v3 STT → sarvam-105b → Bulbul v3 TTS · <span id="modeBadge">checking…</span>
+    </div>
+  </div>
+  <nav>
+    <a href="/dashboard">Dashboard</a>
+    <a href="/docs" target="_blank" rel="noreferrer">API</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <div id="banner"></div>
+
+  <div class="grid">
+    <!-- ---------- left: the dialer ---------- -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <section class="card">
+        <h2>Call list <span class="right hint" id="listMeta"></span></h2>
+        <div class="body tight" id="borrowers"><div class="hint" style="padding:8px">loading…</div></div>
+      </section>
+
+      <section class="card">
+        <h2>Place call</h2>
+        <div class="body">
+          <label for="langSel">Script language <span class="hint">(borrower's preference by default)</span></label>
+          <select id="langSel">
+            <option value="">Use borrower preference</option>
+            <option value="hi-IN">Hindi · hi-IN</option>
+            <option value="en-IN">English · en-IN</option>
+            <option value="ta-IN">Tamil · ta-IN</option>
+            <option value="te-IN">Telugu · te-IN</option>
+            <option value="ml-IN">Malayalam · ml-IN</option>
+            <option value="kn-IN">Kannada · kn-IN</option>
+          </select>
+
+          <div class="row-btns">
+            <button id="btnCall" class="primary" disabled>Start call</button>
+            <button id="btnHang" class="danger" disabled>Hang up</button>
+          </div>
+          <div class="meter" title="Your microphone level">
+            <span class="hint">mic</span>
+            <div class="bar"><i id="micBar"></i></div>
+          </div>
+          <p class="hint" style="margin:12px 0 0">
+            Speak into your microphone as the borrower. Interrupt the bot mid-sentence to
+            see barge-in. Saaras auto-detects the language, so answering in a different
+            language than the call list switches the voice mid-call.
+          </p>
+        </div>
+      </section>
+    </div>
+
+    <!-- ---------- middle: the conversation ---------- -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <section class="card">
+        <h2>
+          Live conversation
+          <span class="right"><span class="pill Idle" id="statePill"><span class="dot"></span><span id="stateText">Idle</span></span></span>
+        </h2>
+        <div id="transcript">
+          <div class="msg SYSTEM">Pick a borrower and press <b>Start call</b>.</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Pipeline trace <span class="right hint">logs/steps.jsonl · events table</span></h2>
+        <div id="steps"></div>
+      </section>
+    </div>
+
+    <!-- ---------- right: instrumentation ---------- -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <section class="card">
+        <h2>Latency budget</h2>
+        <div class="body">
+          <div class="metrics">
+            <div class="metric" id="mSTT"><div class="k">STT finalise</div><div class="v">–<small> ms</small></div></div>
+            <div class="metric" id="mLLM"><div class="k">LLM TTFT</div><div class="v">–<small> ms</small></div></div>
+            <div class="metric" id="mTTS"><div class="k">TTS TTFA</div><div class="v">–<small> ms</small></div></div>
+            <div class="metric" id="mTotal"><div class="k">End→audio</div><div class="v">–<small> ms</small></div></div>
+          </div>
+          <div class="budget">
+            <div class="bar"><i id="budgetBar" style="width:0%"></i></div>
+            <div class="lbl"><span>0</span><span>target ≤ 800 ms</span><span>1200+</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Compliance <span class="right hint">RBI · DPDP · TRAI</span></h2>
+        <div class="body">
+          <div class="chips" id="compliance">
+            <span class="chip">recording disclosed</span>
+            <span class="chip">identified self</span>
+            <span class="chip">in calling window</span>
+            <span class="chip">no threat</span>
+            <span class="chip">no credential ask</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Agentic actions <span class="right hint">idempotent</span></h2>
+        <div class="ledger" id="tools"><div class="row"><span class="dt">no tool calls yet</span></div></div>
+      </section>
+
+      <section class="card">
+        <h2>Call outcome</h2>
+        <div class="body" id="outcome"><span class="hint">Ends when you hang up.</span></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

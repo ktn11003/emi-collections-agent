@@ -1,0 +1,31 @@
+# Pinned against Python 3.14 (all wheels, no source builds).
+# Python 3.10-3.13 also work; loosen pins if pip cannot resolve.
+
+# --- web / async ---
+fastapi==0.141.1
+uvicorn[standard]==0.52.0
+python-multipart==0.0.32
+websockets==17.0
+httpx==0.28.1
+
+# --- config ---
+pydantic==2.13.4
+pydantic-settings==2.14.2
+python-dotenv==1.2.2
+
+# --- database ---
+SQLAlchemy==2.0.51
+alembic==1.18.5
+
+# --- audio: numpy only. `audioop` was removed from the stdlib in Python 3.13,
+#     so mu-law codec + resampling are implemented in app/audio.py.
+numpy==2.5.1
+
+# --- timezones: Windows ships no system tz database, so zoneinfo raises
+#     ZoneInfoNotFoundError for "Asia/Kolkata" and the RBI calling-window check
+#     (a compliance control) fails. Required on Windows, harmless elsewhere.
+tzdata==2026.2
+
+# --- tests ---
+pytest==9.1.1
+pytest-asyncio==1.4.0
