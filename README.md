@@ -63,6 +63,11 @@ uvicorn app.main:app --app-dir src --reload
 Open **<http://127.0.0.1:8000>**, pick a borrower, press **Start call**, and speak.
 The dashboard is at **/dashboard**, the API docs at **/docs**.
 
+> Want to build it yourself rather than run it? **[`docs/BUILD-FROM-SCRATCH.md`](docs/BUILD-FROM-SCRATCH.md)**
+> is the full manual walkthrough — every command in order, the four Sarvam API
+> findings that shaped the design, and a troubleshooting table of every failure I
+> hit.
+
 ### Getting a key
 
 Sign in at **<https://dashboard.sarvam.ai>** → **API Keys** → **Create API Key**,
@@ -151,11 +156,15 @@ buyer asked for.
 ├─ alembic.ini · migrations/   schema as migrations, SQLite + Postgres
 ├─ data/call_list.csv          SFTP-style feed (with rows that must be rejected)
 ├─ docs/
+│  ├─ BUILD-FROM-SCRATCH.md    ← rebuild it yourself, step by step
 │  ├─ business-writeup.md      ← problem · why AI · why Sarvam · ROI · limits
 │  ├─ architecture.md          ← diagrams, latency budget, data model, topology
 │  ├─ BUILD-LOG.md             ← every decision + the bugs found, with evidence
 │  ├─ telephony.md             ← activating a real phone call
-│  └─ demo-script.md           ← what to show, in what order
+│  ├─ cost.md                  ← per-call cost model (rates are placeholders)
+│  ├─ security.md              ← implemented vs production-required controls
+│  ├─ demo-script.md           ← what to show, in what order
+│  └─ screenshots/             ← live call + dashboard
 ├─ scripts/
 │  ├─ seed_db.py               create schema + ingest/scrub the call list
 │  ├─ smoke_test_sarvam.py     verify all four APIs end to end
@@ -240,11 +249,20 @@ DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/emi_agent
 never float. `calls.correlation_id` is the SIP `Call-ID`, so one trace spans
 SIP → media → STT → LLM → TTS → tools → analytics.
 
-Inspect it directly:
+Inspect it directly. (The `sqlite3` CLI is not installed by default on Windows, so
+this uses Python, which the venv always has):
 
 ```bash
-sqlite3 data/emi_agent.db "SELECT disposition, COUNT(*) FROM calls GROUP BY 1;"
-sqlite3 data/emi_agent.db "SELECT name, status, idempotency_key FROM tool_invocations;"
+python -c "
+import sqlite3
+c = sqlite3.connect('data/emi_agent.db')
+for q in [
+    'SELECT disposition, COUNT(*) FROM calls GROUP BY 1',
+    'SELECT name, status, substr(idempotency_key,1,12) FROM tool_invocations',
+]:
+    print('--', q)
+    for row in c.execute(q): print('  ', row)
+"
 ```
 
 Or over HTTP: `/api/calls`, `/api/calls/{id}`, `/api/stats`,
