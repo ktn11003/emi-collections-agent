@@ -1,5 +1,12 @@
 # Architecture
 
+> **Diagram for slides:** an editable, business-readable version of the five-plane
+> view is at **[`architecture.excalidraw`](architecture.excalidraw)** — open it at
+> <https://excalidraw.com> (File → Open), or via this
+> [shareable link](https://excalidraw.com/#json=f6vPpCWlZJ4lcUDH40Ql8,0N2WadOY11SK3FEgDCBFaQ).
+> Export to PNG/SVG from there for a deck. The Mermaid diagrams below are the
+> canonical, version-controlled source and render directly on GitHub.
+
 ## The five planes
 
 Data (who to call, with what context) → Telephony (get a live audio channel) →

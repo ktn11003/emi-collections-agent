@@ -159,6 +159,7 @@ buyer asked for.
 │  ├─ BUILD-FROM-SCRATCH.md    ← rebuild it yourself, step by step
 │  ├─ business-writeup.md      ← problem · why AI · why Sarvam · ROI · limits
 │  ├─ architecture.md          ← diagrams, latency budget, data model, topology
+│  ├─ architecture.excalidraw  ← the same diagram, editable for slides
 │  ├─ BUILD-LOG.md             ← every decision + the bugs found, with evidence
 │  ├─ telephony.md             ← activating a real phone call
 │  ├─ cost.md                  ← per-call cost model (rates are placeholders)
