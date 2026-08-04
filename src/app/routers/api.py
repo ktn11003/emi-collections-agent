@@ -28,7 +28,7 @@ from app.db.repo import (
 from app.ingest.csv_loader import load_csv
 from app.orchestrator.executor import execute as execute_tool
 from app.orchestrator.executor import replay_dead_letters
-from app.sarvam.voices import SOW_LANGUAGES, voice_for
+from app.sarvam.voices import ACTIVE_LANGUAGES, voice_for
 
 logger = logging.getLogger("emi.api")
 router = APIRouter(prefix="/api")
@@ -52,7 +52,7 @@ def health() -> dict:
         # Whether the window is actually *enforced* — a demo override can be on.
         # The UI needs both to avoid warning about a gate that is not active.
         "enforce_calling_window": settings.enforce_calling_window,
-        "languages": list(SOW_LANGUAGES),
+        "languages": list(ACTIVE_LANGUAGES),
     }
 
 

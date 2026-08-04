@@ -1,4 +1,4 @@
-"""Language -> Bulbul voice mapping, and the six SoW languages.
+"""Language -> Bulbul voice mapping, and the languages this deployment offers.
 
 The speaker list is the one bulbul:v3 actually accepts (the API rejects
 bulbul:v2-only speakers such as ``anushka`` with a 400 — confirmed on
@@ -8,8 +8,13 @@ collections, tone changes recovery outcomes.
 
 from __future__ import annotations
 
-# The Piramal SoW scope: Hindi, English, Tamil, Telugu, Malayalam, Kannada.
-SOW_LANGUAGES: tuple[str, ...] = ("hi-IN", "en-IN", "ta-IN", "te-IN", "ml-IN", "kn-IN")
+# What this deployment offers. Narrower than what Bulbul can speak, on purpose:
+# every offered language needs a tested prompt, a tested disclosure line and a
+# reviewed guardrail list, so scope is a decision rather than a capability dump.
+ACTIVE_LANGUAGES: tuple[str, ...] = ("hi-IN", "en-IN")
+
+# Retained so existing callers keep working; prefer ACTIVE_LANGUAGES.
+SOW_LANGUAGES: tuple[str, ...] = ACTIVE_LANGUAGES
 
 # Bulbul v3 covers 11 languages; Saaras v3 covers 23. Translate bridges the gap.
 TTS_LANGUAGES: tuple[str, ...] = (

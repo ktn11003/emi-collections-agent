@@ -21,10 +21,26 @@ microphone or a carrier.
 | Inbound | base64 G.711 μ-law, 8 kHz, 20 ms frames (160 B) | μ-law decode → high-pass + AGC → resample to 16 kHz → Saaras |
 | Outbound | same | ask Bulbul for `output_audio_codec: "mulaw"` at 8 kHz — **native, no transcode** |
 
-That second row is the useful detail: Bulbul's REST endpoint emits telephony μ-law
-directly, so the RTP path has no resampling or codec work on the hot path. The
-WebSocket is mp3-only, which is why the browser uses the socket and the carrier leg
-uses REST.
+That second row is the useful detail: Bulbul emits telephony μ-law directly, so the
+RTP path has no resampling or codec work on the hot path.
+
+> **Corrected 2026-08-04.** This section used to say "the WebSocket is mp3-only,
+> which is why the carrier leg uses REST". That is no longer true — the socket was
+> re-probed and accepts several codecs:
+>
+> | `output_audio_codec` | `content_type` | TTFA |
+> |---|---|---|
+> | `linear16` | `audio/pcm` | 0.41 s |
+> | `mp3` | `audio/mpeg` | 0.44 s |
+> | `mulaw` | `audio/mulaw` | 0.39 s |
+> | `wav` | `audio/wav` (RIFF per chunk) | 0.14 s |
+> | `pcm_s16le` | rejected | — |
+>
+> So the carrier leg **can** stream μ-law over the WebSocket instead of batching
+> over REST. That is a latency win worth taking when the telephony path is next
+> touched: REST returns one whole utterance, the socket starts returning audio in
+> ~0.4 s. `TTS_TRANSPORT=rest` remains the safe default only because the REST path
+> is the one covered by the smoke test.
 
 Both conversions live in `src/app/audio.py` (`telephony_to_stt`,
 `tts_to_telephony`) and are unit-tested — including that a 440 Hz tone survives an

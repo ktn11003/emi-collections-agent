@@ -1,6 +1,6 @@
 """Call-list ingestion — the SFTP CSV feed that fuels the dialer.
 
-In the Piramal SoW the call universe arrives as a CSV on a secure SFTP endpoint:
+In production the call universe arrives as a CSV on a secure SFTP endpoint:
 phone, language, name, EMI amount, due date, DPD, product, consent flag. This is
 the "Dynamic Call Personalisation" the SoW calls out — each row's variables become
 prompt context, so the bot opens with the borrower's actual name and amount.
@@ -95,7 +95,7 @@ def load_csv(source: str | Path | io.StringIO, *, campaign_name: str = "EMI Remi
             campaign = get_or_create_campaign(
                 s, campaign_name,
                 use_case="EMI_REMINDER",
-                languages=["hi-IN", "en-IN", "ta-IN", "te-IN", "ml-IN", "kn-IN"],
+                languages=["hi-IN", "en-IN"],
                 dialer_mode="PROGRESSIVE",
             )
             campaign_id = campaign.id

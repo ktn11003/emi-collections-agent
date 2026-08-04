@@ -35,7 +35,7 @@ def _completed_call(borrower, *, disposition: Disposition = Disposition.PTP) -> 
             compliance={"in_window": True, "consent_on_file": True},
         )
         add_turn(s, call, speaker=Speaker.BOT, language="hi-IN", text=(
-            "Namaste Rahul ji, main Priya bol rahi hoon Piramal Finance se. "
+            "Namaste Rahul ji, main Priya bol rahi hoon Generic Finance se. "
             "Yeh call quality ke liye record ki ja rahi hai. "
             "Aapki 4,500 rupees ki EMI 5 tareekh ko due thi."
         ))
@@ -86,7 +86,7 @@ class TestAnalyseCall:
         result = await analyse_call(call_id)
         flags = result.compliance_flags
         assert flags["disclosed_recording"] is True    # the opening line says so
-        assert flags["identified_self"] is True        # "Piramal" / "Priya"
+        assert flags["identified_self"] is True        # "Generic" / "Priya"
         assert flags["no_threat"] is True
         assert result.qa_score >= 87.5
 

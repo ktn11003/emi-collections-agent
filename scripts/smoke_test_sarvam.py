@@ -35,7 +35,16 @@ from app.sarvam.client import close_http         # noqa: E402
 from app.sarvam.stt import StreamingSTT, transcribe  # noqa: E402
 from app.sarvam.translate import translate       # noqa: E402
 
-HINDI = ("Namaste Rahul ji, main Priya bol rahi hoon Piramal Finance se. "
+# Windows consoles default to cp1252, and this script prints Devanagari
+# transcripts. Without this, print() raises UnicodeEncodeError partway
+# through and a fully passing run looks like a failure.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError):
+        pass
+
+HINDI = ("Namaste Rahul ji, main Priya bol rahi hoon Generic Finance se. "
          "Yeh call quality ke liye record ki ja rahi hai. "
          "Aapki 4,500 rupees ki EMI 5 tareekh ko due thi.")
 
@@ -120,7 +129,7 @@ async def check_chat_stream() -> None:
     async for delta in stream_chat(
         [
             {"role": "system", "content":
-                "You are Priya, an EMI reminder agent for Piramal Finance. Reply in one short "
+                "You are Priya, an EMI reminder agent for Generic Finance. Reply in one short "
                 "Hindi-English sentence. No markdown."},
             {"role": "user", "content": "Haan boliye, kya baat hai?"},
         ],

@@ -26,7 +26,7 @@ class TestDetection:
         assert looks_like_tool_call(leak), leak
 
     @pytest.mark.parametrize("speech", [
-        "Namaste Rahul ji, main Priya bol rahi hoon Piramal Finance se.",
+        "Namaste Rahul ji, main Priya bol rahi hoon Generic Finance se.",
         "Aapki 4,500 rupees ki EMI 5 tareekh ko due thi.",
         "Theek hai, main 8 tareekh note kar rahi hoon.",
         "क्या आप आज payment कर सकते हैं?",

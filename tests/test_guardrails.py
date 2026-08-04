@@ -75,7 +75,7 @@ class TestUtteranceScreening:
         assert not screen_utterance("Aapke boss ko bata denge iske baare mein").allowed
 
     @pytest.mark.parametrize("line", [
-        "Namaste Rahul ji, main Priya bol rahi hoon Piramal Finance se.",
+        "Namaste Rahul ji, main Priya bol rahi hoon Generic Finance se.",
         "Aapki 4,500 rupees ki EMI 5 tareekh ko due thi.",
         "Bilkul samajh sakti hoon, koi baat nahi. Kis tareekh tak kar payenge?",
         "Main aapko payment link WhatsApp par bhej deti hoon.",
@@ -139,7 +139,7 @@ class TestPrecallGate:
 class TestComplianceSummary:
     def test_clean_call_scores_100(self):
         lines = [
-            "Namaste Rahul ji, main Priya bol rahi hoon Piramal Finance se. "
+            "Namaste Rahul ji, main Priya bol rahi hoon Generic Finance se. "
             "Yeh call quality ke liye record ki ja rahi hai.",
             "Aapki EMI pending hai. Kya aap aaj payment kar sakte hain?",
         ]
@@ -158,7 +158,7 @@ class TestComplianceSummary:
 
     def test_violation_tags_lower_the_score(self):
         summary = compliance_summary(
-            ["Piramal Finance se, record ki ja rahi hai."],
+            ["Generic Finance se, record ki ja rahi hai."],
             borrower=make_borrower(), in_window=True,
             violation_tags=["threat_of_police_action"],
         )
@@ -182,7 +182,7 @@ class TestGroundedPrompt:
 
     def test_opening_line_always_discloses_recording(self):
         """The disclosure is deterministic, not model-generated, so it is auditable."""
-        for language in ("hi-IN", "en-IN", "ta-IN"):
+        for language in ("hi-IN", "en-IN"):
             line = opening_line(make_borrower(), language=language)
             assert screen_utterance(line).allowed
             summary = compliance_summary([line], borrower=make_borrower(), in_window=True)

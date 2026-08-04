@@ -20,6 +20,17 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # --- deployment identity ------------------------------------------------
+    # The lender the agent says it is calling from. Configuration, not source:
+    # the same build serves any lender, and no real client's name is baked into
+    # a prompt that ends up in a public repository.
+    lender_name: str = "Generic Finance"
+    agent_name: str = "Priya"
+
+    # Languages this deployment offers. Distinct from what Bulbul can speak -
+    # see app/sarvam/voices.py ACTIVE_LANGUAGES vs TTS_LANGUAGES.
+    active_languages: str = "hi-IN,en-IN"
+
     # --- Sarvam -------------------------------------------------------------
     sarvam_api_key: str = ""
     sarvam_base_url: str = "https://api.sarvam.ai"

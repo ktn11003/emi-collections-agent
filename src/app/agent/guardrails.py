@@ -65,9 +65,31 @@ _ALL_RULES = (
 _DISCLOSURE_MARKERS = re.compile(
     r"(record(ed|ing)?|record ki ja rahi|recorded for quality|" r"रिकॉर्ड)", re.IGNORECASE
 )
-_IDENTITY_MARKERS = re.compile(
-    r"(piramal|priya)", re.IGNORECASE
-)
+def _build_identity_markers() -> re.Pattern[str]:
+    """Words that prove the agent said who it is.
+
+    Derived from configuration rather than hardcoded. The agent's own name and
+    the lender name both count, as does the lender's first token on its own -
+    transcripts routinely clip "Generic Finance se" down to "Generic".
+    """
+    names: set[str] = set()
+    for raw in (settings.agent_name, settings.lender_name):
+        raw = (raw or "").strip()
+        if not raw:
+            continue
+        names.add(raw)
+        head = raw.split()[0]
+        # A bare "Finance"/"Bank" token would match almost any sentence, so only
+        # take the first word when it is distinctive.
+        if len(head) > 3 and head.lower() not in {"the", "finance", "bank", "credit", "loans"}:
+            names.add(head)
+    if not names:  # never leave the control matching nothing
+        names.add("agent")
+    alts = "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True))
+    return re.compile(f"({alts})", re.IGNORECASE)
+
+
+_IDENTITY_MARKERS = _build_identity_markers()
 
 
 # --- results -----------------------------------------------------------------

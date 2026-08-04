@@ -14,7 +14,7 @@ Pipeline
    the opposite of the live loop) and constrained to JSON.
 3. **Render an English summary** so one reviewer can read all six languages.
    Produced by sarvam-105b in the same call rather than by a translation pass:
-   Mayura paraphrases proper nouns (it renamed "Piramal Finance" to "PrimeLife
+   Mayura paraphrases proper nouns (it renamed the lender name to "PrimeLife
    Finance" in testing). Mayura remains the fallback.
 4. **Score compliance** deterministically, not by asking the model — the
    regulator wants a rule, not an opinion.
@@ -196,7 +196,7 @@ async def analyse_call(call_id: str) -> AnalyticsResult:
 
     # 3. English for HQ reporting -------------------------------------------
     # Produced by the LLM in the same call, not by a separate translation pass.
-    # Why: Mayura paraphrases proper nouns — it rendered "Piramal Finance" as
+    # Why: Mayura paraphrases proper nouns — it rendered the lender name as
     # "PrimeLife Finance", which is unacceptable in a document a compliance
     # reviewer reads, and placeholder-protection was unreliable because the model
     # sometimes drops the placeholder too. sarvam-105b keeps entity names intact

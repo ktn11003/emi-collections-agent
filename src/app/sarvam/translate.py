@@ -14,7 +14,7 @@ Translate does two jobs here that neither STT nor the LLM should do:
 ``sarvam-translate:v1`` covers all 22 scheduled languages but formal-only. We
 pick per language automatically.
 
-**Known limitation:** these models paraphrase proper nouns — "Piramal Finance"
+**Known limitation:** these models paraphrase proper nouns — a lender name
 came back as "PrimeLife Finance" in testing. So Translate is used for *fixed,
 reviewed* strings (the compliance disclosure), and free-form call summaries are
 rendered into English by sarvam-105b instead, which keeps entity names intact

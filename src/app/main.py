@@ -51,7 +51,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="Piramal EMI Collections Voice Agent",
+    title="Generic Collections Agent Bot",
     description=(
         "Multilingual outbound collections voice agent on Sarvam AI "
         "(Saaras v3 STT / sarvam-105b / Bulbul v3 TTS / Mayura translate) "

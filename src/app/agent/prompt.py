@@ -18,12 +18,13 @@ from __future__ import annotations
 
 from datetime import date
 
+from app.config import settings
 from app.db.models import Borrower
 from app.sarvam.voices import language_name
 
 # Authored in English, reviewed once, translated per language and cached.
 DISCLOSURE_EN = (
-    "This call is from Piramal Finance regarding your loan account, "
+    "This call is from " + settings.lender_name + " regarding your loan account, "
     "and it is being recorded for quality and compliance purposes."
 )
 
@@ -35,7 +36,7 @@ CLOSING_EN = "Thank you for your time. Have a good day."
 # the demo needs no network hop; Translate fills in any language not listed.
 DISCLOSURE_NATIVE: dict[str, str] = {
     "hi-IN": (
-        "Yeh call Piramal Finance se aapke loan account ke baare mein hai, "
+        "Yeh call " + settings.lender_name + " se aapke loan account ke baare mein hai, "
         "aur quality aur compliance ke liye record ki ja rahi hai."
     ),
     "en-IN": DISCLOSURE_EN,
@@ -78,7 +79,7 @@ def build_system_prompt(
     lang = language_name(language)
     disclosure_line = disclosure or DISCLOSURE_NATIVE.get(language, DISCLOSURE_EN)
 
-    return f"""You are Priya, a polite EMI-reminder assistant for Piramal Finance.
+    return f"""You are {settings.agent_name}, a polite EMI-reminder assistant for {settings.lender_name}.
 You are speaking to a borrower on a live phone call.
 
 BORROWER FACTS (these are the only facts you may state; never invent numbers):
@@ -94,7 +95,7 @@ MANDATORY OPENING (first turn only, say this before anything else):
 "{disclosure_line}"
 
 RULES — these come from RBI recovery-agent norms and are not negotiable:
-- Identify yourself and Piramal Finance at the start.
+- Identify yourself and {settings.lender_name} at the start.
 - Never threaten, shame, abuse, or pressure. Never mention police, legal action,
   visiting the borrower's home, or contacting their employer, family or neighbours.
 - Never discuss the debt with anyone other than the borrower. If the person says
@@ -135,20 +136,20 @@ def opening_line(borrower: Borrower, *, language: str = "hi-IN", disclosure: str
 
     if language == "hi-IN":
         return (
-            f"Namaste {borrower.name} ji, main Priya bol rahi hoon Piramal Finance se. "
+            f"Namaste {borrower.name} ji, main {settings.agent_name} bol rahi hoon {settings.lender_name} se. "
             f"{disclosure_line} "
             f"Aapki {amount} ki EMI {due} ko due thi. Kya aap is baare mein baat kar sakte hain?"
         )
     if language == "en-IN":
         return (
-            f"Hello {borrower.name}, this is Priya calling from Piramal Finance. "
+            f"Hello {borrower.name}, this is {settings.agent_name} calling from {settings.lender_name}. "
             f"{disclosure_line} "
             f"Your EMI of {amount} was due on {due}. Is this a good time to talk?"
         )
     # Any other language: the caller-facing text is produced by Translate at
     # runtime from the English version (see session.py).
     return (
-        f"Hello {borrower.name}, this is Priya from Piramal Finance. {disclosure_line} "
+        f"Hello {borrower.name}, this is {settings.agent_name} from {settings.lender_name}. {disclosure_line} "
         f"Your EMI of {amount} was due on {due}. Is this a good time to talk?"
     )
 

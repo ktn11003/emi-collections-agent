@@ -71,7 +71,7 @@ async def stream_chat(
     _counter["llm"] += 1
 
     scripts = [
-        "Namaste Rahul ji, main Priya bol rahi hoon Piramal Finance se. "
+        "Namaste Rahul ji, main Priya bol rahi hoon Generic Finance se. "
         "Yeh call quality aur record ke liye record ki ja rahi hai. "
         "Aapki 4,500 rupees ki EMI 5 tareekh ko due thi. Kya aap aaj payment kar sakte hain?",
         "Bilkul samajh sakti hoon. Koi baat nahi. "
