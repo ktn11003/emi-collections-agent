@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     # --- Sarvam -------------------------------------------------------------
     sarvam_api_key: str = ""
     sarvam_base_url: str = "https://api.sarvam.ai"
-    stt_model: str = "saaras:v3"
+    stt_model: str = "saaras:v4"
     tts_model: str = "bulbul:v3"
     llm_model: str = "sarvam-105b"
     translate_model: str = "mayura:v1"
