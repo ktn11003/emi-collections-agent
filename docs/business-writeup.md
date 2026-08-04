@@ -1,4 +1,4 @@
-# Multilingual voice collections for Piramal Finance, on Sarvam AI
+# Multilingual voice collections for Generic Finance, on Sarvam AI
 
 **A working PoC: EMI-reminder voice agent across six Indian languages, with an
 agentic backend and 100% call QA.**
@@ -15,7 +15,7 @@ reality both work against the current model:
   reminders are the highest-volume, most repetitive, least judgement-intensive
   calls in the book — and they consume the same expensive capacity as genuinely
   difficult negotiations.
-* **Language fragmentation.** Piramal's borrower base spans Hindi, English,
+* **Language fragmentation.** the client's borrower base spans Hindi, English,
   Tamil, Telugu, Malayalam and Kannada. Staffing native speakers for every
   language in every shift is not practical, so borrowers get called in a language
   they are not comfortable in — or not called on time.
@@ -27,7 +27,7 @@ reality both work against the current model:
   systematic behaviour problem is discovered late, in an audit, at maximum cost.
 
 **The specific brief.** A real Scope of Work exists: deploy two generative-AI
-voice bots for Piramal Finance — **EMI Reminder** and **Lead Qualification** —
+voice bots for Generic Finance — **EMI Reminder** and **Lead Qualification** —
 across six Indian languages, up to **20,000 outbound calls** (10k per use case),
 in four weeks.
 
@@ -226,7 +226,7 @@ What this PoC does **not** do:
 
 | Phase | Weeks | Outcome |
 |---|---|---|
-| **1 · Harden** | 1–3 | Real SIP trunk + SBC, live CPaaS number, Postgres, recording capture to Piramal S3 with purge proof, InfoSec review |
+| **1 · Harden** | 1–3 | Real SIP trunk + SBC, live CPaaS number, Postgres, recording capture to Generic Finance S3 with purge proof, InfoSec review |
 | **2 · Shadow** | 4–5 | Bot listens and scores real agent calls. **Zero risk to recovery numbers** while accuracy and compliance scoring are validated against human QA |
 | **3 · Pilot** | 6–8 | 10–20% of Tier-1 reminders, 2 languages, parallel run against a control cohort. Measure cure rate, PTP rate, ₹ recovered |
 | **4 · Scale** | 9–11 | All six languages, predictive pacing, live payment reconciliation, WhatsApp follow-up, HA/DR, VAPT sign-off |
@@ -240,13 +240,13 @@ at risk while the lift is proved. In BFSI, risk-aversion *is* the sale.
 
 ## The one-slide summary
 
-> Piramal makes tens of thousands of EMI-reminder calls a month at ₹40–80 each,
+> Generic Finance makes tens of thousands of EMI-reminder calls a month at ₹40–80 each,
 > across six languages, under RBI conduct rules, with 2% QA coverage.
 >
 > This agent makes the same call for ₹3–6, in the borrower's own language,
 > handling code-mixing and interruption, capturing a dated promise-to-pay and
 > sending a payment link — and it scores **100% of calls** for compliance.
 >
-> It runs on Sarvam's Indian-language models, and it can run **inside Piramal's
+> It runs on Sarvam's Indian-language models, and it can run **inside the client's
 > own VPC**, so borrower PII never leaves the perimeter. That is the part a
 > US-hosted LLM cannot offer at any price.

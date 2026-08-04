@@ -58,7 +58,7 @@ class PaymentGateway:
             code = hashlib.sha256(f"{loan_id}{amount_paise}{ref}".encode()).hexdigest()[:10]
             logger.info("mock payment link %s for %s (%d paise)", ref, loan_id, amount_paise)
             return PaymentLinkResult(
-                url=f"https://pay.piramal.example/l/{code}", provider_ref=ref, amount_paise=amount_paise
+                url=f"https://pay.lender.example/l/{code}", provider_ref=ref, amount_paise=amount_paise
             )
 
         async with httpx.AsyncClient(timeout=20) as c:

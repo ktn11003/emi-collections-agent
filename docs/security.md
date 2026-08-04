@@ -72,7 +72,7 @@ prefix — no `GetObject`, no bucket-wide access, encryption enforced by conditi
 {
   "Effect": "Allow",
   "Action": ["s3:PutObject"],
-  "Resource": "arn:aws:s3:::piramal-col/recordings/*",
+  "Resource": "arn:aws:s3:::your-bucket-col/recordings/*",
   "Condition": {"StringEquals": {"s3:x-amz-server-side-encryption": "aws:kms"}}
 }
 ```
@@ -155,5 +155,5 @@ elastically; your data never leaves your boundary."*
   breach. The screen blocks references to employers, family and neighbours, and the
   prompt instructs the bot to apologise and disposition `WRONG_NUMBER` instead.
 * **Voice cloning / impersonation.** Out of scope here, but a fixed agent persona
-  ("Priya from Piramal Finance") plus recorded disclosure is the honest posture; the
+  ("Priya from Generic Finance") plus recorded disclosure is the honest posture; the
   bot never claims to be human.

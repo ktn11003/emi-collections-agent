@@ -1,4 +1,4 @@
-# Piramal EMI Collections Voice Agent — on Sarvam AI
+# Generic Collections Agent Bot — on Sarvam AI
 
 A multilingual outbound **collections voice agent** with an agentic backend, a
 relational datastore, and a post-call analytics pipeline that scores **100% of
@@ -7,7 +7,7 @@ calls** for RBI compliance.
 Built on **Saaras v3** (STT) · **sarvam-105b** (LLM + tools) · **Bulbul v3** (TTS)
 · **Mayura** (translate).
 
-> **Use case:** early-delinquency EMI reminders for Piramal Finance across six
+> **Use case:** early-delinquency EMI reminders for Generic Finance across six
 > Indian languages — the money bot in collections, where the ROI is undeniable.
 > Business case: [`docs/business-writeup.md`](docs/business-writeup.md).
 

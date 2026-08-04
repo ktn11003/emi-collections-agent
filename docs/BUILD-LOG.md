@@ -328,7 +328,7 @@ generously for it (offline path). There is no useful middle setting.
 ## 15. The translator renamed the client
 
 **Symptom:** the English summary of a Hindi call read *"agent Priya from
-**PrimeLife Finance**"*. The Hindi original said Piramal Finance.
+**PrimeLife Finance**"*. The Hindi original said Generic Finance.
 
 Mayura paraphrases proper nouns. In a document a compliance reviewer reads, or one
 that gets attached to a dispute file, silently renaming the lender is not a
@@ -341,7 +341,7 @@ the brand name simply missing. Worse than the original problem, so it was remove
 rather than shipped.
 
 **Fix:** don't translate free-form summaries at all. sarvam-105b already writes
-"Piramal Finance" correctly because it has the conversation in context, so it now
+"Generic Finance" correctly because it has the conversation in context, so it now
 returns `summary` and `summary_english` in the **same JSON call** — better entity
 fidelity, and one fewer API round trip.
 

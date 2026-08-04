@@ -431,7 +431,7 @@ of 3000 for anything that leaves reasoning on.
 **`translate.py`** — Mayura, with a DB cache.
 
 > **Use Translate for fixed, reviewed strings only.** It paraphrases proper
-> nouns: "Piramal Finance" came back as **"PrimeLife Finance"**. Placeholder
+> nouns: "Generic Finance" came back as **"PrimeLife Finance"**. Placeholder
 > protection did not reliably survive either — the model sometimes drops the
 > placeholder. For free-form summaries, ask sarvam-105b for the English version
 > in the same JSON call; it keeps entity names because it has the context.

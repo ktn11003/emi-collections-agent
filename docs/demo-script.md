@@ -18,7 +18,7 @@ Have open: `http://127.0.0.1:8000` and `http://127.0.0.1:8000/dashboard`.
 ## 0:00–0:25 · The problem, in numbers
 
 > "Indian lenders make tens of millions of collections calls a month. A human
-> agent touch costs ₹40–80. Piramal's borrowers speak six languages, RBI limits
+> agent touch costs ₹40–80. the client's borrowers speak six languages, RBI limits
 > when and how you can call them, and human QA samples about 2% of calls.
 >
 > This is an EMI-reminder voice agent on Sarvam's stack. It makes the same call
@@ -196,7 +196,7 @@ Be the engineer who says what doesn't work:
 > 300 milliseconds are.
 >
 > The rollout is shadow mode first — the bot listens and scores real agent calls,
-> so Piramal's recovery numbers are never at risk while we prove the lift. Then a
+> so the client's recovery numbers are never at risk while we prove the lift. Then a
 > pilot on 10–20% of volume with a control cohort. Nothing goes live without a
 > parallel run and a rollback."
 
