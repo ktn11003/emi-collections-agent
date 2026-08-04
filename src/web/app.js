@@ -568,3 +568,83 @@ $('btnCall').onclick = startCall;
 $('btnHang').onclick = hangup;
 loadHealth();
 loadBorrowers();
+
+
+/* ------------------------------------------------------------------------- *
+ * Call-list ingest.
+ *
+ * The upload posts to /api/ingest/upload, which runs the same loader as the
+ * production SFTP feed. What is rendered below is the scrub report: how many rows
+ * were accepted, and which borrowers were rejected under which regulation. That
+ * second half is the point - counts answer "how many", an auditor asks "which".
+ * ------------------------------------------------------------------------- */
+(function ingestPanel() {
+  const drop = document.getElementById('drop');
+  const input = document.getElementById('fileInput');
+  const out = document.getElementById('ingestResult');
+  const meta = document.getElementById('ingestMeta');
+  if (!drop || !input || !out) return;
+
+  const esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  function render(r) {
+    const rejected = r.rejected || [];
+    const rows = rejected.map((x) => `
+      <tr>
+        <td>${esc(x.loan_id)}</td>
+        <td>${esc(x.name)}</td>
+        <td>${esc(x.phone)}</td>
+        <td>${esc(x.reason)}<br><span class="auth">${esc(x.authority)}</span></td>
+      </tr>`).join('');
+
+    out.innerHTML = `
+      <div class="ing">
+        <div>
+          <span class="pill ok">${r.loaded} callable</span>
+          ${r.skipped_no_consent ? `<span class="pill no">${r.skipped_no_consent} no consent</span>` : ''}
+          ${r.skipped_dnd ? `<span class="pill no">${r.skipped_dnd} on DND</span>` : ''}
+          ${r.skipped_invalid ? `<span class="pill no">${r.skipped_invalid} invalid</span>` : ''}
+          <span class="hint"> of ${r.total_rows} rows${r.sheet ? ' &middot; sheet "' + esc(r.sheet) + '"' : ''}</span>
+        </div>
+        ${rows ? `<table><thead><tr><th>Loan</th><th>Borrower</th><th>Phone</th><th>Rejected because</th></tr></thead>
+                  <tbody>${rows}</tbody></table>` : ''}
+        ${(r.errors && r.errors.length)
+            ? `<div class="hint" style="margin-top:8px">${r.errors.map(esc).join('<br>')}</div>` : ''}
+      </div>`;
+    if (meta) meta.textContent = esc(r.source || '');
+    // The borrower list is now stale by definition.
+    if (typeof window.loadBorrowers === 'function') window.loadBorrowers();
+  }
+
+  async function send(file) {
+    if (!file) return;
+    out.innerHTML = '<div class="ing hint">Validating and scrubbing…</div>';
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('campaign_name', 'Uploaded call list');
+    try {
+      const res = await fetch('/api/ingest/upload', { method: 'POST', body: fd });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // 422 means the header contract failed even after aliasing - show it, because
+        // "which column is missing" is the only useful thing to say here.
+        out.innerHTML = `<div class="ing"><span class="pill no">rejected</span>
+          <span class="hint"> ${esc(body.detail || res.statusText)}</span></div>`;
+        return;
+      }
+      render(body);
+    } catch (e) {
+      out.innerHTML = `<div class="ing"><span class="pill no">upload failed</span>
+        <span class="hint"> ${esc(e.message)}</span></div>`;
+    }
+  }
+
+  drop.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => send(input.files[0]));
+  ['dragenter', 'dragover'].forEach((ev) =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach((ev) =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', (e) => send(e.dataTransfer.files[0]));
+})();

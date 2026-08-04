@@ -26,6 +26,10 @@ numpy==2.5.1
 #     (a compliance control) fails. Required on Windows, harmless elsewhere.
 tzdata==2026.2
 
+# --- spreadsheets: .xlsx call-list upload and analytics export. A collections
+#     floor hands you a workbook, not a CSV, and asks for one back.
+openpyxl==3.1.5
+
 # --- tests ---
 pytest==9.1.1
 pytest-asyncio==1.4.0

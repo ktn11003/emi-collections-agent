@@ -5,6 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Generic Collections Agent Bot · Sarvam AI</title>
   <link rel="stylesheet" href="/static/styles.css" />
+<style>
+  /* Ingest panel. Deliberately plain: the interesting thing on screen is the
+     scrub report, not the upload affordance. */
+  .drop{border:1.5px dashed var(--line,#3a3a3a);border-radius:10px;padding:18px;text-align:center;
+        cursor:pointer;transition:background .15s,border-color .15s}
+  .drop:hover,.drop.over{border-color:#e0762b;background:rgba(224,118,43,.07)}
+  .linky{color:#e0762b;cursor:pointer;text-decoration:underline}
+  .ing{margin-top:12px;font-size:13px}
+  .ing table{width:100%;border-collapse:collapse;margin-top:8px}
+  .ing th,.ing td{text-align:left;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.07)}
+  .ing th{font-weight:600;opacity:.7;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600}
+  .pill.ok{background:rgba(46,160,67,.18);color:#4ade80}
+  .pill.no{background:rgba(220,60,60,.18);color:#f87171}
+  .auth{opacity:.65;font-size:11px}
+</style>
 </head>
 <body>
 <header>
@@ -27,7 +43,21 @@
     <!-- ---------- left: the dialer ---------- -->
     <div style="display:flex; flex-direction:column; gap:16px;">
       <section class="card">
-        <h2>Call list <span class="right hint" id="listMeta"></span></h2>
+        <h2>Call list <span class="right hint" id="ingestMeta"></span></h2>
+        <div class="body">
+          <!-- Ingest is a compliance control, not a file import: consent and DND are
+               scrubbed here, so no code path downstream can reach a rejected row. -->
+          <div id="drop" class="drop">
+            <b>Drop the call list here</b>
+            <div class="hint">.xlsx or .csv &middot; or <label for="fileInput" class="linky">choose a file</label></div>
+            <input id="fileInput" type="file" accept=".xlsx,.xlsm,.csv,.txt" hidden>
+          </div>
+          <div id="ingestResult"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Callable universe <span class="right hint" id="listMeta"></span></h2>
         <div class="body tight" id="borrowers"><div class="hint" style="padding:8px">loading…</div></div>
       </section>
 

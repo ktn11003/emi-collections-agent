@@ -32,6 +32,49 @@ logger = logging.getLogger("emi.ingest")
 REQUIRED_COLUMNS = {"loan_id", "phone", "lang", "name", "emi_amount", "due_date", "dpd", "consent"}
 OPTIONAL_COLUMNS = {"product", "outstanding", "dnd"}
 
+# Real call lists do not use our column names. The spreadsheet a collections floor
+# actually maintains says "days_past_due" and "language"; an LMS export might say
+# "account_no" or "mobile". Rejecting the file over a synonym is a header contract
+# enforced against the customer rather than agreed with them, so map the common
+# variants and keep the contract for things that genuinely have to be agreed.
+COLUMN_ALIASES: dict[str, str] = {
+    "days_past_due": "dpd",
+    "dayspastdue": "dpd",
+    "days past due": "dpd",
+    "language": "lang",
+    "lang_code": "lang",
+    "language_code": "lang",
+    "mobile": "phone",
+    "mobile_no": "phone",
+    "phone_number": "phone",
+    "msisdn": "phone",
+    "account_no": "loan_id",
+    "account_number": "loan_id",
+    "loan_account": "loan_id",
+    "loanid": "loan_id",
+    "borrower_name": "name",
+    "customer_name": "name",
+    "emi": "emi_amount",
+    "emi_amt": "emi_amount",
+    "instalment": "emi_amount",
+    "installment": "emi_amount",
+    "due": "due_date",
+    "emi_due_date": "due_date",
+    "consent_flag": "consent",
+    "dnd_flag": "dnd",
+    "do_not_disturb": "dnd",
+    "outstanding_amount": "outstanding",
+    "pos": "outstanding",
+}
+
+
+def canonical(header: str) -> str:
+    """Normalise one column name to the contract."""
+    h = (header or "").strip().lower().replace("-", "_")
+    h = " ".join(h.split())          # collapse internal whitespace
+    h = COLUMN_ALIASES.get(h, h)
+    return COLUMN_ALIASES.get(h.replace(" ", "_"), h.replace(" ", "_"))
+
 TRUTHY = {"y", "yes", "true", "1", "t"}
 
 
@@ -44,6 +87,11 @@ class IngestReport:
     skipped_invalid: int = 0
     callable_universe: int = 0
     errors: list[str] = field(default_factory=list)
+    # Per-row rejection detail. Counts alone answer "how many?"; an auditor - and a
+    # demo audience - asks "which ones, and why?". Capped so a bad 100k-row file
+    # cannot produce a 100k-item response.
+    rejected: list[dict] = field(default_factory=list)
+    sheet: str | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -54,6 +102,8 @@ class IngestReport:
             "skipped_invalid": self.skipped_invalid,
             "callable_universe": self.callable_universe,
             "errors": self.errors[:20],
+            "rejected": self.rejected[:100],
+            "sheet": self.sheet,
         }
 
 
@@ -67,6 +117,22 @@ def _to_paise(value: str) -> int:
     """Accepts '4500', '4,500', '4500.00', '₹4,500'."""
     cleaned = value.replace(",", "").replace("₹", "").replace("Rs.", "").replace("Rs", "").strip()
     return int(round(float(cleaned) * 100))
+
+
+def _mask_phone(phone: str) -> str:
+    """Show enough to identify the row, not enough to dial it."""
+    digits = "".join(c for c in (phone or "") if c.isdigit())
+    return f"••••••{digits[-4:]}" if len(digits) >= 4 else "••••"
+
+
+def _rejection(row: dict, reason: str, authority: str) -> dict:
+    return {
+        "loan_id": row.get("loan_id") or "",
+        "name": row.get("name") or "",
+        "phone": _mask_phone(row.get("phone", "")),
+        "reason": reason,
+        "authority": authority,
+    }
 
 
 def load_csv(source: str | Path | io.StringIO, *, campaign_name: str = "EMI Reminder - July 2026") -> IngestReport:
@@ -83,7 +149,7 @@ def load_csv(source: str | Path | io.StringIO, *, campaign_name: str = "EMI Remi
 
     try:
         reader = csv.DictReader(handle)
-        headers = {h.strip().lower() for h in (reader.fieldnames or [])}
+        headers = {canonical(h) for h in (reader.fieldnames or [])}
         missing = REQUIRED_COLUMNS - headers
         if missing:
             raise ValueError(
@@ -102,7 +168,7 @@ def load_csv(source: str | Path | io.StringIO, *, campaign_name: str = "EMI Remi
 
             for raw in reader:
                 report.total_rows += 1
-                row = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
+                row = {canonical(k): (v or "").strip() for k, v in raw.items()}
                 loan_id = row.get("loan_id", "")
 
                 try:
@@ -112,10 +178,12 @@ def load_csv(source: str | Path | io.StringIO, *, campaign_name: str = "EMI Remi
                     # DPDP Act 2023: no consent, no call. Fails closed.
                     if not consent:
                         report.skipped_no_consent += 1
+                        report.rejected.append(_rejection(row, "no consent on record", "DPDP Act 2023"))
                         continue
                     # TRAI DND / UCC scrub.
                     if dnd:
                         report.skipped_dnd += 1
+                        report.rejected.append(_rejection(row, "number is on the DND registry", "TRAI DND / UCC"))
                         continue
 
                     upsert_borrower(
@@ -137,6 +205,7 @@ def load_csv(source: str | Path | io.StringIO, *, campaign_name: str = "EMI Remi
                 except (KeyError, ValueError) as exc:
                     report.skipped_invalid += 1
                     report.errors.append(f"{loan_id or f'row {report.total_rows}'}: {exc}")
+                    report.rejected.append(_rejection(row, str(exc), "data validation"))
 
             report.callable_universe = report.loaded
             add_audit(
