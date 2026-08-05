@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import REPO_ROOT, settings
 from app.db.base import create_all, db_flavour
-from app.routers import api, ws_voice
+from app.routers import api, pay, ws_voice
 from app.sarvam.client import close_http
 from app.telephony import twilio_media
 from app.steplog import configure_logging, step
@@ -62,6 +62,7 @@ app = FastAPI(
 )
 
 app.include_router(api.router)
+app.include_router(pay.router)
 app.include_router(ws_voice.router)
 
 # Real-telephony bridge. Always mounted (harmless without a carrier); a call only

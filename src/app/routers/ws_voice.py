@@ -71,6 +71,11 @@ async def voice_socket(
         return
 
     buffer = bytearray()
+    # Nothing used to record that inbound audio had arrived, so a silent
+    # microphone and a broken transcriber were indistinguishable from the logs -
+    # both produced a call with zero turns and no clue which half was at fault.
+    audio_windows = 0
+    audio_bytes = 0
     try:
         while True:
             message = await ws.receive()
@@ -85,6 +90,17 @@ async def voice_socket(
                 if len(buffer) >= MIN_WINDOW_BYTES:
                     chunk = bytes(buffer)
                     buffer.clear()
+                    audio_windows += 1
+                    audio_bytes += len(chunk)
+                    # First window proves the client is sending at all; then
+                    # occasional heartbeats prove it kept sending.
+                    if audio_windows == 1 or audio_windows % 25 == 0:
+                        peak = max(
+                            abs(int.from_bytes(chunk[i:i + 2], "little", signed=True))
+                            for i in range(0, len(chunk) - 1, 2)
+                        ) / 32768.0
+                        step("media.audio_in", session.call_id,
+                             windows=audio_windows, bytes=audio_bytes, peak=round(peak, 4))
                     await session.push_audio(chunk)
                 continue
 
@@ -98,6 +114,8 @@ async def voice_socket(
 
             action = control.get("action")
             if action == "hangup":
+                step("media.audio_in.total", session.call_id,
+                     windows=audio_windows, bytes=audio_bytes)
                 if buffer:
                     await session.push_audio(bytes(buffer))
                     buffer.clear()

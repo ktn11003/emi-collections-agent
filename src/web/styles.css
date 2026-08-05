@@ -1,17 +1,23 @@
 :root {
-  --bg: #0b0e14;
-  --panel: #131822;
-  --panel-2: #1a2130;
-  --line: #253044;
-  --ink: #e6ecf5;
-  --muted: #8b9bb4;
-  --brand: #4c9aff;
-  --ok: #34d399;
-  --warn: #fbbf24;
-  --bad: #f87171;
-  --bot: #4c9aff;
-  --borrower: #34d399;
-  --radius: 10px;
+  /* Palette adopted from the v0 redesign (collections-dashboard). Its component
+     CSS mixed light-theme surfaces into a dark shell, so only the tokens were
+     taken - they are coherent and warmer than the previous set. The markup and
+     every element id are unchanged, because app.js binds to them by id and the
+     audio pipeline depends on that. */
+  --bg: #0a111c;
+  --panel: #101b2a;
+  --panel-2: #172536;
+  --line: #26384d;
+  --ink: #e7edf5;
+  --muted: #91a2b8;
+  --brand: #35a9d6;
+  --ok: #49c892;
+  --warn: #e6a052;
+  --bad: #d9645c;
+  --accent: #9b8be5;
+  --bot: #35a9d6;
+  --borrower: #49c892;
+  --radius: 12px;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
 }
 

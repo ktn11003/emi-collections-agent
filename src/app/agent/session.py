@@ -79,6 +79,9 @@ Emit = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 # Language-switch hysteresis (see _consider_language_switch).
 LANGUAGE_SWITCH_VOTES = 2
+# English needs more agreement than an Indic switch, because English words
+# inside Hindi speech are normal code-mixing rather than a change of language.
+ENGLISH_SWITCH_VOTES = 2
 LANGUAGE_SWITCH_MIN_CONFIDENCE = 0.75
 
 
@@ -520,12 +523,14 @@ class CallSession:
             self._language_votes.clear()
             return
 
-        # English inside an Indic conversation: code-mixing, not a switch.
-        if target == "en-IN" and not current.startswith("en"):
-            step("guardrail.check", self.call_id, kind="code_mix_ignored",
-                 detected=detected, keeping=current)
-            self._language_votes.clear()
-            return
+        # English inside an Indic conversation is USUALLY code-mixing - a Hinglish
+        # speaker says "payment" and "due date" without changing language - so it
+        # needs more evidence than any other switch. It used to be ignored outright,
+        # which meant a borrower who genuinely switched to English was answered in
+        # Hindi forever, however many times they tried. Observed on a live call:
+        # five consecutive English turns, five Hindi replies.
+        english_switch = target == "en-IN" and not current.startswith("en")
+        votes_needed = ENGLISH_SWITCH_VOTES if english_switch else LANGUAGE_SWITCH_VOTES
 
         if confidence is not None and confidence < LANGUAGE_SWITCH_MIN_CONFIDENCE:
             step("guardrail.check", self.call_id, kind="language_switch_low_confidence",
@@ -533,11 +538,11 @@ class CallSession:
             return
 
         self._language_votes.append(target)
-        if len(self._language_votes) < LANGUAGE_SWITCH_VOTES:
+        if len(self._language_votes) < votes_needed:
             step("guardrail.check", self.call_id, kind="language_switch_pending",
-                 detected=target, votes=len(self._language_votes))
+                 detected=target, votes=len(self._language_votes), needed=votes_needed)
             return
-        if len(set(self._language_votes[-LANGUAGE_SWITCH_VOTES:])) > 1:
+        if len(set(self._language_votes[-votes_needed:])) > 1:
             return   # detections disagree; keep listening
 
         self._language_votes.clear()

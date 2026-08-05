@@ -191,9 +191,22 @@ class Downsampler extends AudioWorkletProcessor {
     if (!ch) return true;
 
     // Linear-interpolation decimation to the target rate.
+    //
+    // this.pos carries the fractional read position across blocks. It MUST stay
+    // inside [0, ratio) - it is an offset into the next 128-sample block, not a
+    // running total.
+    //
+    // The previous line was:
+    //   this.pos = (this.pos + Math.ceil(ch.length / this.ratio) * this.ratio) - ch.length;
+    // At 48 kHz with a 128-sample block and ratio 3 that is always this.pos + 1,
+    // so pos crept up by one per block. After ~128 blocks - about a third of a
+    // second - pos passed ch.length, the loop below produced no samples, and the
+    // worklet posted empty buffers forever. No error, no warning: the microphone
+    // simply went dead a third of a second into every call.
     const out = [];
     let peak = 0;
-    for (let i = this.pos; i < ch.length; i += this.ratio) {
+    let i = this.pos;
+    for (; i < ch.length; i += this.ratio) {
       const i0 = Math.floor(i), frac = i - i0;
       const a = ch[i0] ?? 0, b = ch[i0 + 1] ?? a;
       const s = a + (b - a) * frac;
@@ -201,8 +214,9 @@ class Downsampler extends AudioWorkletProcessor {
       const abs = Math.abs(s);
       if (abs > peak) peak = abs;
     }
-    this.pos = (this.pos + Math.ceil(ch.length / this.ratio) * this.ratio) - ch.length;
-    if (this.pos < 0) this.pos = 0;
+    // i is now the first read position beyond this block; rebase it onto the next.
+    this.pos = i - ch.length;
+    if (!(this.pos >= 0) || this.pos >= this.ratio) this.pos = 0;  // NaN-safe clamp
 
     const pcm = new Int16Array(out.length);
     for (let i = 0; i < out.length; i++) {
@@ -216,16 +230,37 @@ class Downsampler extends AudioWorkletProcessor {
 registerProcessor('downsampler', Downsampler);
 `;
 
-async function startMic(onPcm, onLevel) {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      channelCount: 1,
-      echoCancellation: true,   // stops the bot's own voice re-triggering VAD
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-  });
+async function startMic(onPcm, onLevel, deviceId) {
+  const constraints = {
+    channelCount: 1,
+    echoCancellation: true,   // stops the bot's own voice re-triggering VAD
+    noiseSuppression: true,
+    autoGainControl: true,
+  };
+  // Without this the browser always takes the Windows *default* input. Picking a
+  // device in Chrome's permission bubble does not change that default, so a user
+  // who selects their laptop mic can still be recorded from a silent Bluetooth
+  // headset - which looks exactly like the microphone being broken.
+  if (deviceId) constraints.deviceId = { exact: deviceId };
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: constraints });
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+  // Chrome creates an AudioContext in the "suspended" state and only starts it
+  // after a user gesture. A suspended context never calls process() on the
+  // worklet, so no PCM is ever produced: the microphone appears dead, permission
+  // looks granted, and the server sees zero inbound audio. Resume explicitly and
+  // fail loudly rather than silently capturing nothing.
+  if (ctx.state === 'suspended') {
+    try { await ctx.resume(); } catch (e) { /* reported below */ }
+  }
+  if (ctx.state !== 'running') {
+    throw new Error(
+      `AudioContext is "${ctx.state}", not running - the browser blocked audio ` +
+      `capture. Click on the page once, then start the call again.`
+    );
+  }
+
   const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
   await ctx.audioWorklet.addModule(url);
   URL.revokeObjectURL(url);
@@ -237,11 +272,100 @@ async function startMic(onPcm, onLevel) {
     onPcm(e.data.pcm);
     onLevel(e.data.peak);
   };
-  ctx.createMediaStreamSource(stream).connect(node);
-  // Keep the graph alive without echoing the mic to the speakers.
-  node.connect(ctx.createGain()).connect(ctx.destination);
+  // The source MUST be referenced by something that outlives this function.
+  // MediaStreamAudioSourceNode is collectable once nothing holds it, and when
+  // Chrome collects it the graph goes quiet with no error, no event and no clue -
+  // permission still granted, track still "live", and zero audio forever after.
+  const source = ctx.createMediaStreamSource(stream);
+  source.connect(node);
 
-  return { ctx, stream, node };
+  // Keep the graph pulling by terminating at the destination, but at zero gain:
+  // the previous code used a default gain of 1, which routes the microphone
+  // straight back out of the speakers and makes the bot interrupt itself.
+  const sink = ctx.createGain();
+  sink.gain.value = 0;
+  node.connect(sink).connect(ctx.destination);
+
+  const track = stream.getAudioTracks()[0];
+  console.info('[mic] capturing from:', track && track.label,
+               '| context:', ctx.state, '| rate:', ctx.sampleRate);
+  // source and sink are returned purely so the caller keeps them alive.
+  return { ctx, stream, node, source, sink, label: track ? track.label : 'unknown' };
+}
+
+const BORROWER_RENDER_CAP = 60;
+
+async function loadBorrowers() {
+  // Held in memory and rendered as a filtered slice. A real campaign is hundreds
+  // of rows; rendering all of them makes the page an endless scroll and nobody
+  // reads past the first screen anyway - they search.
+  state.allBorrowers = await (await fetch('/api/borrowers')).json();
+  renderBorrowers();
+}
+
+function borrowerNode(b) {
+  // Markup and field names must match the original exactly: the CSS targets
+  // .borrower/.who/.nm/.meta/.amt, the API returns emi_rupees and callable, and
+  // selection is what enables the Start call button. Getting any of these wrong
+  // silently disables the demo - which is exactly what happened once already.
+  const node = el('div', `borrower${b.callable ? '' : ' blocked'}`);
+  node.title = b.callable
+    ? `${b.phone} · voice ${b.voice}`
+    : (b.block_reasons || []).map((r) => `${r.reason} (${r.regulation})`).join(' · ');
+
+  const who = el('div', 'who');
+  who.appendChild(el('div', 'nm', b.name));
+  who.appendChild(el('div', 'meta',
+    `${b.loan_id} · ${b.language}${b.callable ? '' : ' · BLOCKED'}`));
+  const amt = el('div', 'amt', `₹${Number(b.emi_rupees || 0).toLocaleString('en-IN')}`);
+  amt.appendChild(el('small', null, `${b.dpd} DPD`));
+  node.append(who, amt);
+
+  if (b.callable) {
+    node.onclick = () => {
+      document.querySelectorAll('.borrower').forEach((n) => n.classList.remove('active'));
+      node.classList.add('active');
+      state.loanId = b.loan_id;
+      if (!state.calling) $('btnCall').disabled = false;
+    };
+  }
+  return node;
+}
+
+function renderBorrowers() {
+  const rows = state.allBorrowers || [];
+  const box = $('borrowers');
+  const term = ($('borrowerFilter')?.value || '').trim().toLowerCase();
+  const matches = term
+    ? rows.filter((b) => `${b.name} ${b.loan_id}`.toLowerCase().includes(term))
+    : rows;
+  const shown = matches.slice(0, BORROWER_RENDER_CAP);
+
+  box.innerHTML = '';
+  if (!rows.length) {
+    // The universe is defined by the ingested file, so before one is uploaded this
+    // is the correct state - not an error. Say what to do rather than showing an
+    // empty box that reads as broken.
+    box.innerHTML = '<div class="hint" style="padding:12px 8px">'
+      + 'No call list loaded. Drop an <b>.xlsx</b> or <b>.csv</b> above to define '
+      + 'the callable universe.</div>';
+  } else if (!shown.length) {
+    box.innerHTML = '<div class="hint" style="padding:8px">No borrower matches that.</div>';
+  } else {
+    shown.forEach((b) => box.appendChild(borrowerNode(b)));
+    if (matches.length > shown.length) {
+      const more = el('div', 'hint');
+      more.style.padding = '8px';
+      more.textContent = `+ ${matches.length - shown.length} more — type to filter`;
+      box.appendChild(more);
+    }
+  }
+
+  const callable = rows.filter((b) => b.callable).length;
+  $('listMeta').textContent = !rows.length
+    ? 'awaiting a call list'
+    : (term ? `${matches.length} of ${rows.length} match`
+            : `${callable}/${rows.length} callable`);
 }
 
 /* ------------------------------------------------------------------ UI paint */
@@ -361,7 +485,9 @@ async function startCall() {
         (pcm) => { if (ws.readyState === WebSocket.OPEN) ws.send(pcm); },
         (peak) => { $('micBar').style.width = `${Math.min(100, peak * 160)}%`; }
       );
+      addSystem(`Microphone live: ${mic.label}`);
       state.micCtx = mic.ctx; state.micStream = mic.stream; state.worklet = mic.node;
+      state.micSource = mic.source; state.micSink = mic.sink;   // hold refs: see startMic
     } catch (err) {
       addSystem(`Microphone denied: ${err.message}. The bot will still speak; you just cannot reply.`, true);
     }
@@ -510,37 +636,8 @@ function teardown() {
 }
 
 /* ------------------------------------------------------------------ bootstrap */
-async function loadBorrowers() {
-  const rows = await (await fetch('/api/borrowers')).json();
-  const box = $('borrowers');
-  box.innerHTML = '';
-  const callable = rows.filter((r) => r.callable).length;
-  $('listMeta').textContent = `${callable}/${rows.length} callable`;
 
-  for (const b of rows) {
-    const node = el('div', `borrower${b.callable ? '' : ' blocked'}`);
-    node.title = b.callable
-      ? `${b.phone} · voice ${b.voice}`
-      : b.block_reasons.map((r) => `${r.reason} (${r.regulation})`).join('\n');
 
-    const who = el('div', 'who');
-    who.appendChild(el('div', 'nm', b.name));
-    who.appendChild(el('div', 'meta', `${b.loan_id} · ${b.language}${b.callable ? '' : ' · BLOCKED'}`));
-    const amt = el('div', 'amt', `₹${b.emi_rupees.toLocaleString('en-IN')}`);
-    amt.appendChild(el('small', null, `${b.dpd} DPD`));
-    node.append(who, amt);
-
-    if (b.callable) {
-      node.onclick = () => {
-        document.querySelectorAll('.borrower').forEach((n) => n.classList.remove('active'));
-        node.classList.add('active');
-        state.loanId = b.loan_id;
-        if (!state.calling) $('btnCall').disabled = false;
-      };
-    }
-    box.appendChild(node);
-  }
-}
 
 async function loadHealth() {
   const h = await (await fetch('/api/health')).json();
@@ -606,6 +703,7 @@ loadBorrowers();
           ${r.skipped_dnd ? `<span class="pill no">${r.skipped_dnd} on DND</span>` : ''}
           ${r.skipped_invalid ? `<span class="pill no">${r.skipped_invalid} invalid</span>` : ''}
           <span class="hint"> of ${r.total_rows} rows${r.sheet ? ' &middot; sheet "' + esc(r.sheet) + '"' : ''}</span>
+          ${r.replaced_universe ? '<div class="hint" style="margin-top:4px">This file now <b>defines</b> the callable universe' + (r.removed_before_load ? ' &middot; ' + r.removed_before_load + ' previous borrowers cleared' : '') + '</div>' : ''}
         </div>
         ${rows ? `<table><thead><tr><th>Loan</th><th>Borrower</th><th>Phone</th><th>Rejected because</th></tr></thead>
                   <tbody>${rows}</tbody></table>` : ''}
@@ -647,4 +745,33 @@ loadBorrowers();
   ['dragleave', 'drop'].forEach((ev) =>
     drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
   drop.addEventListener('drop', (e) => send(e.dataTransfer.files[0]));
+})();
+
+/* The header used to hardcode "Saaras v3 STT". It then disagreed with the actual
+   configuration the moment STT_MODEL changed - and it disagreed on camera. Read the
+   real model names from /api/health instead. */
+(async function modelLine() {
+  const el = document.getElementById('modelLine');
+  if (!el) return;
+  try {
+    const h = await (await fetch('/api/health')).json();
+    const m = h.models || {};
+    if (m.stt && m.llm && m.tts) {
+      el.textContent = `${m.stt} \u2192 ${m.llm} \u2192 ${m.tts}`;
+    }
+  } catch { /* leave the generic label in place */ }
+})();
+
+
+
+
+/* Filter the borrower list without refetching. */
+(function borrowerFilter() {
+  const input = document.getElementById('borrowerFilter');
+  if (!input) return;
+  let t = null;
+  input.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(() => renderBorrowers(), 90);
+  });
 })();

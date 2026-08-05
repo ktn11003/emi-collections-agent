@@ -14,12 +14,14 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from openpyxl.styles import Font, PatternFill
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.agent.guardrails import in_calling_window, precall_check
 from app.analytics.pipeline import analyse_all_pending, analyse_call, portfolio_report
 from app.config import settings
-from app.db.base import db_flavour, get_session
+from app.db.base import db_flavour, get_session, session_scope
 from app.db.repo import (
     call_transcript,
     get_analytics,
@@ -35,6 +37,31 @@ from app.ingest.excel_loader import ExcelIngestError, xlsx_to_csv_text
 from app.orchestrator.executor import execute as execute_tool
 from app.orchestrator.executor import replay_dead_letters
 from app.sarvam.voices import ACTIVE_LANGUAGES, voice_for
+
+# Disposition colouring for the export. Green = money committed, amber = still
+# open and needs a human, red = no outcome reached.
+DISPOSITION_FILL = {
+    "PTP": "C6EFCE", "PAID": "A9D08E", "LINK_SENT": "D9E1F2",
+    "CALLBACK": "FFF2CC", "ESCALATED": "FCE4D6", "DISPUTE": "FCE4D6",
+    "REFUSED": "FFC7CE", "WRONG_NUMBER": "E7E6E6",
+    "NO_ANSWER": "F2F2F2", "INCOMPLETE": "FFC7CE",
+}
+DISPOSITION_FONT = {
+    "PTP": "1E7A3C", "PAID": "0B5A28", "REFUSED": "9C0006",
+    "INCOMPLETE": "9C0006", "DISPUTE": "8A4B08", "ESCALATED": "8A4B08",
+}
+DISPOSITION_MEANING = {
+    "PTP": "Promise to pay captured - a date and an amount were given",
+    "PAID": "Already paid, or paying during the call",
+    "LINK_SENT": "Payment link delivered, no date committed",
+    "CALLBACK": "Asked to be called back later",
+    "ESCALATED": "Handed to a human agent",
+    "DISPUTE": "Borrower disputes the amount - needs a human",
+    "REFUSED": "Refused to pay",
+    "WRONG_NUMBER": "Not the borrower - flagged, will not be called again",
+    "NO_ANSWER": "No usable response from the borrower",
+    "INCOMPLETE": "Call dropped before an outcome was reached",
+}
 
 logger = logging.getLogger("emi.api")
 router = APIRouter(prefix="/api")
@@ -64,9 +91,15 @@ def health() -> dict:
 
 # --- borrowers / dialer -----------------------------------------------------
 @router.get("/borrowers")
-def borrowers(s: Session = Depends(get_session)) -> list[dict]:
+def borrowers(
+    limit: int = Query(1000, le=5000, description="Cap on rows returned"),
+    s: Session = Depends(get_session),
+) -> list[dict]:
+    # list_borrowers defaults to 200. On a real campaign that silently truncates
+    # the callable universe, so the UI would show 200 while ingest reported 431 -
+    # a discrepancy an auditor (or an audience) will spot immediately.
     out = []
-    for b in list_borrowers(s):
+    for b in list_borrowers(s, limit=limit):
         gate = precall_check(b)
         out.append({
             "loan_id": b.loan_id,
@@ -302,6 +335,8 @@ async def ingest_upload(
     file: UploadFile = File(..., description=".xlsx or .csv call list"),
     campaign_name: str = Form("Uploaded call list"),
     sheet: str | None = Form(None),
+    replace: bool = Form(True, description="Replace the callable universe "
+                                            "rather than adding to it"),
 ) -> dict:
     """Validate, scrub and load an uploaded call list.
 
@@ -336,6 +371,26 @@ async def ingest_upload(
             # Exports from Windows tooling are frequently cp1252, not UTF-8.
             csv_text = data.decode("cp1252", errors="replace")
 
+    # An ingested file IS the callable universe for that cycle, not an addition to
+    # whatever was loaded before. Without this, uploading a 3-row list on top of a
+    # 500-row one leaves 500 callable and the scrub report describes 3 - and a
+    # borrower whose consent has since been withdrawn stays callable forever,
+    # which is the exact outcome the DPDP scrub exists to prevent.
+    #
+    # Borrowers that already have call records are kept: deleting them would take
+    # the CDR and the audit trail with them.
+    removed = 0
+    if replace:
+        with session_scope() as sess:
+            rows = sess.execute(
+                text(
+                    "DELETE FROM borrowers WHERE loan_id NOT IN "
+                    "(SELECT DISTINCT loan_id FROM calls WHERE loan_id IS NOT NULL)"
+                )
+            )
+            removed = rows.rowcount or 0
+        logger.info("upload replace: cleared %d borrowers with no call history", removed)
+
     try:
         report = load_csv(io.StringIO(csv_text), campaign_name=campaign_name)
     except ValueError as exc:
@@ -345,6 +400,8 @@ async def ingest_upload(
     report.sheet = used_sheet
     payload = report.as_dict()
     payload["source"] = name
+    payload["replaced_universe"] = bool(replace)
+    payload["removed_before_load"] = removed
     logger.info("upload %s: %d/%d loaded", name, report.loaded, report.total_rows)
     return payload
 
@@ -375,14 +432,32 @@ def _breach_list(value) -> list:
     return list(value) if isinstance(value, (list, tuple)) else [value]
 
 
+def _promises_by_call(s) -> dict[str, dict]:
+    """Promise-to-pay per call, so the export can show the commercial outcome.
+
+    A disposition of PTP without a date and an amount is not a promise to pay -
+    it is a call that sounded encouraging. Joining the actual PTP record is what
+    makes the export usable for follow-up.
+    """
+    rows = s.execute(text(
+        "SELECT call_id, promised_date, amount_paise FROM promises_to_pay "
+        "WHERE call_id IS NOT NULL"
+    )).fetchall()
+    return {r[0]: {"promised_date": r[1], "amount_paise": r[2]} for r in rows}
+
+
 def _export_rows(s, limit: int) -> list[dict]:
-    """One flat record per call, analytics joined in where it exists."""
+    """One flat record per call, analytics and PTP joined in where they exist."""
+    ptps = _promises_by_call(s)
     out = []
     for c in list_calls(s, limit=limit):
         rec = _as_dict(c)
         cid = rec.get("id") or rec.get("call_id")
         a = _as_dict(get_analytics(s, cid) or {})
+        ptp = ptps.get(cid) or {}
         out.append({
+            "promised_date": str(ptp.get("promised_date") or ""),
+            "promised_amount": (ptp.get("amount_paise") or 0) / 100.0 if ptp else "",
             "call_id": cid,
             "correlation_id": rec.get("correlation_id"),
             "loan_id": rec.get("loan_id"),
@@ -424,13 +499,42 @@ def export_analytics(limit: int = Query(500, le=5000), s: Session = Depends(get_
 
     detail = wb.create_sheet("Calls")
     headers = ["call_id", "correlation_id", "loan_id", "language", "disposition",
-               "duration_s", "started_at", "qa_score", "sentiment", "summary_en", "breaches"]
+               "promised_date", "promised_amount", "duration_s", "started_at",
+               "qa_score", "sentiment", "summary_en", "breaches"]
     detail.append(headers)
     for r in rows:
         detail.append([r["call_id"], r["correlation_id"], r["loan_id"], r["language"],
-                       r["disposition"], r["duration_s"], r["started_at"], r["qa_score"],
+                       r["disposition"], r["promised_date"], r["promised_amount"],
+                       r["duration_s"], r["started_at"], r["qa_score"],
                        r["sentiment"], r["summary_en"], ", ".join(map(str, r["breaches"]))])
+
+    # Colour the disposition column. A collections manager scans this sheet for
+    # outcomes, not for call ids, so the outcome is what should be visible without
+    # reading. Green = money committed, amber = still open, red = no outcome.
+    for row in detail.iter_rows(min_row=2, max_row=detail.max_row):
+        disp = str(row[4].value or "").upper()
+        fill = DISPOSITION_FILL.get(disp)
+        if fill:
+            row[4].fill = PatternFill("solid", fgColor=fill)
+            row[4].font = Font(bold=True, color=DISPOSITION_FONT.get(disp, "1F3864"))
+        # A PTP with no date is a disposition that overstates itself - flag it.
+        if disp == "PTP" and not row[5].value:
+            row[5].fill = PatternFill("solid", fgColor="FFF2CC")
+            row[5].value = "MISSING DATE"
+    detail.freeze_panes = "A2"
+    detail.auto_filter.ref = detail.dimensions
     _autosize(detail)
+
+    # A legend, so nobody has to guess what the colours mean.
+    legend = wb.create_sheet("Legend")
+    legend.append(["Disposition", "Meaning", "Colour"])
+    for disp, meaning in DISPOSITION_MEANING.items():
+        legend.append([disp, meaning, ""])
+        cell = legend.cell(row=legend.max_row, column=3)
+        f = DISPOSITION_FILL.get(disp)
+        if f:
+            cell.fill = PatternFill("solid", fgColor=f)
+    _autosize(legend)
 
     breaches_ws = wb.create_sheet("Breaches")
     breaches_ws.append(["call_id", "loan_id", "breach"])
@@ -454,10 +558,12 @@ def export_analytics_csv(limit: int = Query(500, le=5000), s: Session = Depends(
     """Same data as CSV, for anything that would rather not parse a workbook."""
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
-    w.writerow(["call_id", "loan_id", "language", "disposition", "duration_s",
-                "started_at", "qa_score", "sentiment", "breaches"])
+    w.writerow(["call_id", "loan_id", "language", "disposition", "promised_date",
+                "promised_amount", "duration_s", "started_at", "qa_score",
+                "sentiment", "breaches"])
     for r in _export_rows(s, limit):
         w.writerow([r["call_id"], r["loan_id"], r["language"], r["disposition"],
+                    r["promised_date"], r["promised_amount"],
                     r["duration_s"], r["started_at"], r["qa_score"], r["sentiment"],
                     "; ".join(map(str, r["breaches"]))])
     # utf-8-sig so Excel opens Devanagari correctly instead of showing mojibake.

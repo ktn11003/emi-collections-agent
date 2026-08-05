@@ -21,6 +21,19 @@ import httpx
 
 from app.config import settings
 
+def _public_base() -> str:
+    """Where the mock payment page is reachable.
+
+    PUBLIC_BASE_URL when set (a tunnel, or a real host, so a phone can open it);
+    otherwise the local server, which is what the browser demo needs.
+    """
+    base = (settings.public_base_url or "").strip().rstrip("/")
+    if base:
+        return base
+    host = "127.0.0.1" if settings.host in ("0.0.0.0", "127.0.0.1") else settings.host
+    return f"http://{host}:{settings.port}"
+
+
 logger = logging.getLogger("emi.downstream")
 
 
@@ -58,7 +71,11 @@ class PaymentGateway:
             code = hashlib.sha256(f"{loan_id}{amount_paise}{ref}".encode()).hexdigest()[:10]
             logger.info("mock payment link %s for %s (%d paise)", ref, loan_id, amount_paise)
             return PaymentLinkResult(
-                url=f"https://pay.lender.example/l/{code}", provider_ref=ref, amount_paise=amount_paise
+                # Served by app/routers/pay.py so the link in the WhatsApp message
+                # actually opens. The old value was on a domain that does not
+                # resolve, which is fine in a log and useless in a demo - the first
+                # thing anyone does with a payment link is click it.
+                url=f"{_public_base()}/pay/{ref}", provider_ref=ref, amount_paise=amount_paise
             )
 
         async with httpx.AsyncClient(timeout=20) as c:

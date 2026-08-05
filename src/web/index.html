@@ -21,13 +21,20 @@
   .pill.no{background:rgba(220,60,60,.18);color:#f87171}
   .auth{opacity:.65;font-size:11px}
 </style>
+<style>
+  /* The borrower list scrolls inside itself rather than growing the page. */
+  .scroller{max-height:230px;overflow-y:auto;overscroll-behavior:contain}
+  .scroller::-webkit-scrollbar{width:9px}
+  .scroller::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:5px}
+  .scroller::-webkit-scrollbar-track{background:transparent}
+</style>
 </head>
 <body>
 <header>
   <div>
     <h1>Generic Collections Agent Bot</h1>
     <div class="sub">
-      Saaras v3 STT → sarvam-105b → Bulbul v3 TTS · <span id="modeBadge">checking…</span>
+      <span id="modelLine">Saaras &rarr; sarvam-105b &rarr; Bulbul</span> · <span id="modeBadge">checking…</span>
     </div>
   </div>
   <nav>
@@ -58,7 +65,14 @@
 
       <section class="card">
         <h2>Callable universe <span class="right hint" id="listMeta"></span></h2>
-        <div class="body tight" id="borrowers"><div class="hint" style="padding:8px">loading…</div></div>
+        <div class="body" style="padding-bottom:6px">
+          <input id="borrowerFilter" type="search" placeholder="Filter by name or loan id…"
+                 style="width:100%" autocomplete="off">
+        </div>
+        <!-- A real campaign is hundreds of rows. Rendering them all into the page
+             turns the demo into an endless scroll, so the list gets its own fixed
+             viewport and the page itself stays still. -->
+        <div class="body tight scroller" id="borrowers"><div class="hint" style="padding:8px">loading…</div></div>
       </section>
 
       <section class="card">
@@ -79,11 +93,6 @@
             <span class="hint">mic</span>
             <div class="bar"><i id="micBar"></i></div>
           </div>
-          <p class="hint" style="margin:12px 0 0">
-            Speak into your microphone as the borrower. Interrupt the bot mid-sentence to
-            see barge-in. Saaras auto-detects the language, so answering in a different
-            language than the call list switches the voice mid-call.
-          </p>
         </div>
       </section>
     </div>
