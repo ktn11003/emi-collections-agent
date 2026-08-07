@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      run_sarvam_smoke:
+        description: "Run live Sarvam API smoke tests (uses the SARVAM_API_KEY secret)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements.txt
+      - run: pytest -q
+
+  sarvam-smoke:
+    # Deliberately manual: this calls paid external APIs. Add SARVAM_API_KEY in
+    # Settings > Secrets and variables > Actions; GitHub masks it in workflow logs.
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.run_sarvam_smoke &&
+      secrets.SARVAM_API_KEY != ''
+    runs-on: ubuntu-latest
+    env:
+      SARVAM_API_KEY: ${{ secrets.SARVAM_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements.txt
+      - run: python scripts/smoke_test_sarvam.py
