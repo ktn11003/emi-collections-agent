@@ -45,16 +45,21 @@ Talk to it in your microphone as the borrower. The agent:
 ## Quickstart
 
 ```bash
-git clone <this repo> && cd emi-collections-agent
+# GitHub will prompt you to authenticate because this repository is private.
+# Use GitHub Desktop, SSH, or a personal access token when prompted; do not put
+# a token in the clone URL.
+git clone --branch pipecat-native https://github.com/ktn11003/emi-collections-agent.git
+cd emi-collections-agent
 
-python -m venv .venv
-.venv/Scripts/activate            # Windows
-# source .venv/bin/activate       # macOS / Linux
+# Python 3.10+ is required (Python 3.12 recommended).
+python3.12 -m venv .venv
+# .venv\Scripts\activate          # Windows
+source .venv/bin/activate          # macOS / Linux
 pip install -r requirements.txt
 
 cp .env.example .env              # add SARVAM_API_KEY (see below)
 
-alembic upgrade head              # create the schema
+python -m alembic upgrade head     # create the schema
 python scripts/seed_db.py         # load + scrub the call list
 
 uvicorn app.main:app --app-dir src --reload
@@ -62,6 +67,11 @@ uvicorn app.main:app --app-dir src --reload
 
 Open **<http://127.0.0.1:8000>**, pick a borrower, press **Start call**, and speak.
 The dashboard is at **/dashboard**, the API docs at **/docs**.
+
+The project runs in offline mock mode if `SARVAM_API_KEY` is not set: the
+workflow, database, dashboard and tests all work, but voice/model responses are
+canned. Add your own key to `.env` and restart the server to enable live Sarvam
+models. Do not commit `.env`; it is already ignored by Git.
 
 > Want to build it yourself rather than run it? **[`docs/BUILD-FROM-SCRATCH.md`](docs/BUILD-FROM-SCRATCH.md)**
 > is the full manual walkthrough — every command in order, the four Sarvam API
