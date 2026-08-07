@@ -31,8 +31,7 @@ jobs:
     # Settings > Secrets and variables > Actions; GitHub masks it in workflow logs.
     if: >-
       github.event_name == 'workflow_dispatch' &&
-      inputs.run_sarvam_smoke &&
-      secrets.SARVAM_API_KEY != ''
+      inputs.run_sarvam_smoke
     runs-on: ubuntu-latest
     env:
       SARVAM_API_KEY: ${{ secrets.SARVAM_API_KEY }}
