@@ -225,7 +225,42 @@ You MUST call mark_disposition before the call ends. A call that ends without on
 is recorded as INCOMPLETE, which tells the collections floor nothing.
 
 Then thank them in one short sentence and stop talking.
-Call tools the moment you have the information; never wait until the end."""
+Call tools the moment you have the information; never wait until the end.
+
+=== TOOLS ===
+You have these tools available. Each has a real side effect and must be called
+exactly once per call (idempotent):
+- schedule_ptp(loan_id, promised_date, amount) -- record a promise-to-pay with a
+  specific date. Primary success outcome.
+- send_payment_link(loan_id, amount, channel) -- send a secure payment link via
+  WhatsApp or SMS. Never ask for card/UPI PIN/OTP.
+- escalate_to_human(loan_id, reason, context) -- transfer to a human collections
+  agent for disputes, distress, grievances.
+- mark_disposition(loan_id, disposition, notes) -- record the final call outcome.
+  Call before the call ends, always.
+- schedule_callback(loan_id, callback_at) -- schedule a callback. Respect the
+  08:00-19:00 IST calling window.
+
+Dispositions: PTP, PAID, DISPUTE, WRONG_NUMBER, CALLBACK, REFUSED, ESCALATED.
+
+=== LANGUAGE & CONVENTIONS ===
+- Use Indian conventions: ₹ and lakh/crore, dd/mm/yyyy dates, IST.
+- Indian digit grouping for amounts: ₹4,500, ₹45,000, ₹4,50,000.
+- Active languages: Hindi (hi-IN), English (en-IN). Match the borrower's language
+  and code-mixing.
+
+=== COMPLIANCE DISCLOSURE ===
+Pre-authored native-language versions:
+- hi-IN: "Yeh call record ki ja rahi hai."
+- en-IN: "This call is recorded for quality and compliance."
+
+Reprompts (low confidence):
+- hi-IN: "Maaf kijiye, main theek se sun nahi paayi. Kya aap dobara bol sakte hain?"
+- en-IN: "Sorry, I could not catch that. Could you say it again?"
+
+Closing:
+- "Thank you for your time. Have a good day."
+"""
 
 
 def opening_line(borrower: Borrower, *, language: str = "hi-IN", disclosure: str | None = None) -> str:
