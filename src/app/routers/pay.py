@@ -17,10 +17,11 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
+from sqlalchemy import select
 
 from app.config import settings
 from app.db.base import session_scope
-from app.db.models import Borrower
+from app.db.models import Borrower, PaymentLink
 
 router = APIRouter()
 
@@ -109,20 +110,27 @@ def _fmt_inr(paise: int) -> str:
 def payment_page(ref: str) -> HTMLResponse:
     """Render the mock payment page for a link reference.
 
-    The reference carries the loan id (``<loan_id>-<suffix>``), so the page can show
-    the real amount from the borrower record rather than a number in the URL - a URL
-    the borrower could edit to change what they owe would be an obvious flaw for
-    anyone technical watching the demo.
+    The amount is read from the stored link and the borrower record, never from
+    the URL: a link whose amount could be edited by the person paying it would be
+    an obvious flaw to anyone technical watching the demo.
+
+    Resolution is by ``payment_links.provider_ref``, which is what the gateway
+    actually issues ("pl_<hex>"). An older form embedded the loan id as a prefix
+    ("<loan_id>-<suffix>") and is still accepted as a fallback.
     """
-    loan_id = ref.split("-")[0].strip().upper()
-    if not loan_id:
+    ref = (ref or "").strip()
+    if not ref:
         raise HTTPException(404, "unknown payment reference")
 
     with session_scope() as s:
+        link = s.scalar(select(PaymentLink).where(PaymentLink.provider_ref == ref))
+        loan_id = link.loan_id if link else ref.split("-")[0].strip().upper()
+
         b = s.get(Borrower, loan_id)
         if b is None:
             raise HTTPException(404, f"no borrower for reference {ref}")
-        amount_paise = b.emi_amount_paise
+        # The agreed amount, which may be a part payment, not always the full EMI.
+        amount_paise = link.amount_paise if link else b.emi_amount_paise
         product = (b.product or "PERSONAL_LOAN").replace("_", " ").title()
 
     expires = (datetime.now(timezone.utc) + timedelta(hours=LINK_TTL_HOURS)).strftime("%d %b, %H:%M UTC")
