@@ -11,7 +11,9 @@ issue real HTTP calls.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import json
 import logging
 import secrets
 from dataclasses import dataclass
@@ -117,29 +119,154 @@ class LoanManagementSystem:
             return r.status_code < 300
 
 
+# What the borrower actually receives. Kept here, not in the prompt: the model
+# must never compose a message containing a payment URL.
+_TEMPLATE_BODIES = {
+    "emi_payment_link": (
+        "Namaste {name}, {lender} se.\n\n"
+        "Aapki EMI Rs {amount} pending hai.\n"
+        "Payment link: {url}\n\n"
+        "Yeh link sirf aapke liye hai. Kisi ko OTP ya PIN na batayein."
+    ),
+}
+
+
+def render_template(template: str, params: dict) -> str:
+    """Fill a message body. Unknown templates fall back to the raw params."""
+    body = _TEMPLATE_BODIES.get(template)
+    if body is None:
+        return " ".join(f"{k}: {v}" for k, v in params.items())
+    try:
+        return body.format(**params)
+    except KeyError as exc:
+        logger.warning("template %s missing param %s", template, exc)
+        return body
+
+
+def _digits(phone: str) -> str:
+    """Gupshup wants a bare msisdn: country code, no '+', no separators."""
+    return "".join(ch for ch in (phone or "") if ch.isdigit())
+
+
 class MessagingGateway:
-    """WhatsApp / SMS delivery of the payment link and confirmations."""
+    """WhatsApp / SMS delivery of the payment link and confirmations.
+
+    Three providers, chosen by ``WHATSAPP_PROVIDER``:
+
+    * ``mock``    - logs and reports success. The default, so the repo runs and
+      the tests pass with no credentials anywhere.
+    * ``gupshup`` - ``POST api.gupshup.io/wa/api/v1/msg``, form-encoded, apikey
+      header. The usual choice for Indian volume.
+    * ``twilio``  - reuses the ``twilio_*`` credentials already configured for
+      telephony, so a deployment using Twilio for voice needs no new account.
+
+    Delivery failures never raise: a borrower who agreed to pay must not lose the
+    promise because a message gateway had a bad minute. ``accepted=False`` is
+    returned and the executor records it.
+    """
 
     def __init__(self, base: str | None = None) -> None:
         self.base = base or settings.whatsapp_base
-        self.mock = self.base.startswith("mock://")
+        self.provider = settings.whatsapp_provider
+        # Naming a real provider selects it. The default whatsapp_base is
+        # "mock://whatsapp", so letting the base veto the provider meant setting
+        # WHATSAPP_PROVIDER=gupshup silently kept mocking -- a trap, not a safety
+        # net. The base only decides for the generic passthrough.
+        if self.provider in ("gupshup", "twilio"):
+            self.mock = False
+        else:
+            self.mock = self.base.startswith("mock://")
 
     async def send_template(
         self, *, phone: str, template: str, params: dict, channel: str = "WHATSAPP"
     ) -> DeliveryResult:
         ref = "msg_" + secrets.token_hex(6)
+        body = render_template(template, params)
+
+        override = settings.whatsapp_override_to.strip()
+        if override and override != phone:
+            logger.warning(
+                "WhatsApp override active: message for %s redirected to %s",
+                phone or "<no number>", override,
+            )
+            phone = override
+
         if self.mock:
-            logger.info("mock %s -> %s template=%s params=%s", channel, phone[-4:], template, params)
+            logger.info("mock %s -> ...%s\n%s", channel, phone[-4:], body)
             return DeliveryResult(channel=channel, provider_ref=ref, accepted=True)
+
+        try:
+            if self.provider == "gupshup":
+                return await self._send_gupshup(phone, body, channel, ref)
+            if self.provider == "twilio":
+                return await self._send_twilio(phone, body, channel, ref)
+            return await self._send_generic(phone, template, params, channel, ref)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("%s delivery failed via %s: %s", channel, self.provider, exc)
+            return DeliveryResult(channel=channel, provider_ref=ref, accepted=False)
+
+    async def _send_gupshup(self, phone: str, body: str, channel: str, ref: str) -> DeliveryResult:
+        if not settings.gupshup_api_key or not settings.gupshup_source:
+            logger.warning("gupshup selected but GUPSHUP_API_KEY/SOURCE are unset")
+            return DeliveryResult(channel=channel, provider_ref=ref, accepted=False)
+
+        form = {
+            "channel": "whatsapp",
+            "source": _digits(settings.gupshup_source),
+            "destination": _digits(phone),
+            "message": json.dumps({"type": "text", "text": body}),
+        }
+        if settings.gupshup_app_name:
+            form["src.name"] = settings.gupshup_app_name
 
         async with httpx.AsyncClient(timeout=20) as c:
             r = await c.post(
+                "https://api.gupshup.io/wa/api/v1/msg",
+                data=form,
+                headers={"apikey": settings.gupshup_api_key,
+                         "Content-Type": "application/x-www-form-urlencoded"},
+            )
+        ok = r.status_code < 300
+        if not ok:
+            logger.warning("gupshup rejected the message: %s %s", r.status_code, r.text[:200])
+        with contextlib.suppress(Exception):
+            ref = r.json().get("messageId") or ref
+        return DeliveryResult(channel=channel, provider_ref=ref, accepted=ok)
+
+    async def _send_twilio(self, phone: str, body: str, channel: str, ref: str) -> DeliveryResult:
+        sid, token = settings.twilio_account_sid, settings.twilio_auth_token
+        sender = settings.twilio_whatsapp_from
+        if not (sid and token and sender):
+            logger.warning("twilio selected but TWILIO_ACCOUNT_SID/AUTH_TOKEN/WHATSAPP_FROM are unset")
+            return DeliveryResult(channel=channel, provider_ref=ref, accepted=False)
+
+        to = phone if phone.startswith("whatsapp:") else f"whatsapp:{phone}"
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.post(
+                f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json",
+                data={"From": sender, "To": to, "Body": body},
+                auth=(sid, token),
+            )
+        ok = r.status_code < 300
+        if not ok:
+            logger.warning("twilio rejected the message: %s %s", r.status_code, r.text[:200])
+        with contextlib.suppress(Exception):
+            ref = r.json().get("sid") or ref
+        return DeliveryResult(channel=channel, provider_ref=ref, accepted=ok)
+
+    async def _send_generic(
+        self, phone: str, template: str, params: dict, channel: str, ref: str
+    ) -> DeliveryResult:
+        """Whatever is at ``whatsapp_base`` -- the original placeholder shape."""
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.post(
                 f"{self.base.rstrip('/')}/messages",
-                json={"to": phone, "type": "template", "template": {"name": template, "params": params}},
+                json={"to": phone, "type": "template",
+                      "template": {"name": template, "params": params}},
             )
-            return DeliveryResult(
-                channel=channel, provider_ref=r.json().get("id", ref), accepted=r.status_code < 300
-            )
+        return DeliveryResult(
+            channel=channel, provider_ref=r.json().get("id", ref), accepted=r.status_code < 300
+        )
 
 
 class HumanAgentQueue:
