@@ -41,11 +41,37 @@ _KNOWN_KEYS = {
 _JSON_HINT = re.compile(
     r"(\{[^{}]*[\"']\s*(?:" + "|".join(sorted(_KNOWN_KEYS)) + r")\s*[\"']\s*:)"
     r"|(^\s*[\[{])"
-    r"|(\b(?:" + "|".join(TOOL_NAMES) + r")\s*\()",
+    r"|(\b(?:" + "|".join(TOOL_NAMES) + r")\s*\()"
+    # XML-style call blocks. sarvam-105b intermittently abandons the OpenAI
+    # tool_calls field and emits an Anthropic-style `<function_calls>` wrapper as
+    # plain content — observed live, spoken to the borrower as "<functioncalls".
+    # The opening tag arrives as its own sentence, ahead of any JSON, so the
+    # brace-based checks above see nothing to catch.
+    r"|(<\s*/?\s*(?:function|tool|invoke|antml|parameter)\w*)",
     re.IGNORECASE,
 )
 
 # Normalise keys the model may mangle (it sometimes drops the underscore).
+# Bare enum *values*. The model sometimes emits a tool call one token at a time,
+# and a fragment like '"WRONGNUMBER",' carries no brace and no key, so it slipped
+# past every structural check and was read to the borrower — observed live on a
+# wrong-number call, twice in one conversation. These are never natural speech in
+# any language, quoted or not, with or without a trailing comma.
+_ENUM_VALUES = {
+    # mark_disposition
+    "PTP", "PAID", "LINK_SENT", "DISPUTE", "WRONG_NUMBER", "NO_ANSWER",
+    "CALLBACK", "REFUSED", "ESCALATED", "INCOMPLETE",
+    # escalate_to_human
+    "DISTRESS", "REQUESTED_HUMAN", "HARDSHIP", "GRIEVANCE", "COMPLEX_QUERY",
+    # send_payment_link
+    "WHATSAPP", "SMS",
+}
+# Matched with separators stripped, so "WRONG_NUMBER", "WRONGNUMBER" and
+# "wrong number" all collapse to the same token.
+_ENUM_TOKENS = {v.replace("_", "").upper() for v in _ENUM_VALUES} | {
+    n.replace("_", "").upper() for n in TOOL_NAMES
+}
+
 _KEY_ALIASES = {
     "loanid": "loan_id", "loan": "loan_id", "account": "loan_id",
     "promiseddate": "promised_date", "ptpdate": "promised_date", "date": "promised_date",
@@ -75,10 +101,24 @@ def looks_like_tool_call(text: str) -> bool:
     # never speech.
     if re.fullmatch(r"[\s\[\]{}(),:\"']+", stripped):
         return True
+    # A lone enum value or tool name, however it was punctuated. Deliberately
+    # before the length guard and before _JSON_HINT: these fragments are short
+    # and carry no JSON syntax at all.
+    bare = re.sub(r"[^A-Za-z]", "", stripped).upper()
+    if bare and bare in _ENUM_TOKENS and len(re.findall(r"[A-Za-z]+", stripped)) <= 2:
+        return True
     if len(stripped) < 4:
         return False
     if _JSON_HINT.search(stripped):
         return True
+    # Any XML/HTML-ish tag. sarvam-105b invents new wrappers for text-mode tool
+    # calls -- <function_calls>, then <arg_key>loan_id</arg_key> -- and naming
+    # them one at a time is a losing game. Nothing Bulbul is ever asked to speak,
+    # in any supported language, contains an angle bracket followed by a letter
+    # or a slash, so the shape is the reliable signal.
+    if re.search(r"<\s*/?\s*[A-Za-z_]", stripped):
+        return True
+
     # A quoted key followed by a colon is never natural speech.
     return bool(re.search(r"[\"']\w+[\"']\s*:", stripped))
 
