@@ -61,7 +61,10 @@ SCRIPTS: dict[str, list[str]] = {
 
 # Voices distinct from the agent's, so the transcript is unambiguous.
 BORROWER_VOICE = {"hindi": "aditya", "dispute": "aditya", "wrong_number": "aditya", "tamil": "gokul"}
-BORROWER_LANG = {"hindi": "hi-IN", "english": "en-IN", "dispute": "hi-IN", "wrong_number": "hi-IN"}
+# Keys must cover every entry in SCRIPTS: the lookup below is unguarded, so a
+# missing script raises KeyError before a single utterance is synthesised.
+# "tamil" was advertised in the module docstring but absent here.
+BORROWER_LANG = {"hindi": "hi-IN", "tamil": "ta-IN", "dispute": "hi-IN", "wrong_number": "hi-IN"}
 
 
 class Recorder:
