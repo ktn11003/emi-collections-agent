@@ -67,6 +67,28 @@ class Settings(BaseSettings):
     whatsapp_base: str = "mock://whatsapp"
     recording_sink: str = "file://./data/recordings"
 
+    # --- WhatsApp delivery --------------------------------------------------
+    # mock    - log it, deliver nothing (default; no credentials needed)
+    # gupshup - api.gupshup.io/wa/api/v1/msg
+    # twilio  - Twilio WhatsApp, reusing the twilio_* credentials below
+    whatsapp_provider: Literal["mock", "gupshup", "twilio"] = "mock"
+
+    gupshup_api_key: str = ""
+    # The WhatsApp business number Gupshup sends from, digits only, with country
+    # code and no '+'. e.g. 917834811114 for the shared sandbox.
+    gupshup_source: str = ""
+    # The Gupshup app name the source number is registered under.
+    gupshup_app_name: str = ""
+
+    # Twilio WhatsApp sender, e.g. "whatsapp:+14155238886" (their sandbox).
+    twilio_whatsapp_from: str = ""
+
+    # DEMO ONLY. When set, every WhatsApp message is redirected to this number
+    # regardless of the borrower's stored phone -- because sandbox numbers only
+    # deliver to handsets that have opted in. MUST be empty in production: it
+    # would send one borrower's payment link to somebody else.
+    whatsapp_override_to: str = ""
+
     # --- telephony (optional) ----------------------------------------------
     telephony_provider: str = ""
     twilio_account_sid: str = ""
