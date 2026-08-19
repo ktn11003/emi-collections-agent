@@ -28,10 +28,12 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 
 from app.agent.tools import IDEMPOTENT_ON, TOOL_NAMES
+from app.config import settings
 from app.db.base import session_scope
 from app.db.models import Disposition, ToolStatus
 from app.db.repo import (
     add_audit,
+    add_compliance_event,
     add_crm_writeback,
     add_escalation,
     add_event,
@@ -97,12 +99,19 @@ async def _send_payment_link(call_id: str | None, args: dict) -> ToolResult:
     with session_scope() as s:
         borrower = get_borrower(s, loan_id)
         phone = borrower.phone if borrower else ""
+        name = borrower.name if borrower else ""
 
     link = await payments.create_link(loan_id=loan_id, amount_paise=amount_paise, phone=phone)
     delivery = await messaging.send_template(
         phone=phone,
         template="emi_payment_link",
-        params={"amount": amount_paise / 100.0, "url": link.url},
+        params={
+            "name": name,
+            "lender": settings.lender_name,
+            # Grouped for reading, since this is text a person sees.
+            "amount": f"{amount_paise / 100.0:,.0f}",
+            "url": link.url,
+        },
         channel=channel,
     )
 
@@ -207,16 +216,37 @@ async def _mark_disposition(call_id: str | None, args: dict) -> ToolResult:
                           error=f"unknown disposition {raw!r}")
 
     notes = str(args.get("notes") or "")
+    suppressed = False
     with session_scope() as s:
+        # WRONG_NUMBER is not just an outcome, it is an instruction: this number
+        # does not belong to the borrower, so it must never be dialled again.
+        # Setting the DND flag is what the pre-call gate already reads, so one
+        # write closes the loop without a second suppression list.
+        if disposition is Disposition.WRONG_NUMBER:
+            borrower = get_borrower(s, loan_id)
+            if borrower is not None and not borrower.dnd_registered:
+                borrower.dnd_registered = True
+                suppressed = True
+                add_compliance_event(
+                    s, call_id, "number_suppressed", passed=True,
+                    detail=f"{loan_id} reported wrong number; suppressed from future dialling",
+                    regulation="TRAI DND / UCC",
+                )
+                add_audit(s, "borrower.suppressed", entity="borrower", entity_id=loan_id,
+                          payload={"reason": "WRONG_NUMBER", "call_id": call_id})
+
         add_crm_writeback(s, call_id=call_id, loan_id=loan_id, system="LMS",
-                          payload={"disposition": disposition.value, "notes": notes})
-        add_event(s, call_id, "tool.disposition", {"disposition": disposition.value})
+                          payload={"disposition": disposition.value, "notes": notes,
+                                   "suppress": suppressed})
+        add_event(s, call_id, "tool.disposition",
+                  {"disposition": disposition.value, "suppressed": suppressed})
     await lms.update_disposition(
         loan_id=loan_id, payload={"disposition": disposition.value, "notes": notes}
     )
     return ToolResult(
         name="mark_disposition", ok=True,
-        data={"disposition": disposition.value}, speech_hint="Outcome recorded.",
+        data={"disposition": disposition.value, "suppressed": suppressed},
+        speech_hint="Outcome recorded.",
     )
 
 
@@ -239,12 +269,28 @@ async def _schedule_callback(call_id: str | None, args: dict) -> ToolResult:
     )
 
 
+async def _end_call(call_id: str | None, args: dict) -> ToolResult:
+    """Agent-initiated hangup.
+
+    The side effect lives in the session, not here: this handler only records
+    that the agent asked to end, so the CDR shows the call was concluded rather
+    than dropped. Returning no speech_hint is deliberate -- a narration pass
+    after a hangup is exactly the loop this tool exists to stop.
+    """
+    loan_id = str(args["loan_id"])
+    reason = str(args.get("reason") or "")[:200]
+    with session_scope() as s:
+        add_event(s, call_id, "tool.end_call", {"loan_id": loan_id, "reason": reason})
+    return ToolResult(name="end_call", ok=True, data={"reason": reason})
+
+
 _HANDLERS = {
     "send_payment_link": _send_payment_link,
     "schedule_ptp": _schedule_ptp,
     "escalate_to_human": _escalate_to_human,
     "mark_disposition": _mark_disposition,
     "schedule_callback": _schedule_callback,
+    "end_call": _end_call,
 }
 
 
