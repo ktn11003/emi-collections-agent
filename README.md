@@ -4,12 +4,40 @@ A multilingual outbound **collections voice agent** with an agentic backend, a
 relational datastore, and a post-call analytics pipeline that scores **100% of
 calls** for RBI compliance.
 
-Built on **Saaras v3** (STT) · **sarvam-105b** (LLM + tools) · **Bulbul v3** (TTS)
-· **Mayura** (translate).
+Built on **Saaras v4** (STT) · **sarvam-105b** (LLM + tools) · **Bulbul v3** (TTS).
 
-> **Use case:** early-delinquency EMI reminders for Generic Finance across six
-> Indian languages — the money bot in collections, where the ROI is undeniable.
+> **Use case:** early-delinquency EMI reminders in **Hindi and English** — the
+> highest-volume, lowest-complexity conversation on a collections floor, and the
+> one that costs the most to staff.
 > Business case: [`docs/business-writeup.md`](docs/business-writeup.md).
+
+## Demo video
+
+**▶ [Watch the 4-minute demo](PASTE_YOUR_LOOM_OR_DRIVE_LINK_HERE)**
+
+Shows the call list ingested with the consent/DND scrub rejecting 69 of 500 rows,
+the compliance gate refusing a call and naming the regulation, a live Hindi
+conversation with barge-in and a mid-call switch to English, the tool ledger, and
+the 100%-QA analytics exported to a spreadsheet.
+
+## Architecture at a glance
+
+```
+Borrower ──PSTN──▶ SBC / CPaaS ──media──▶ Agent service ──▶ Sarvam
+                   SIP-TLS 5061          μ-law→16 kHz        Saaras v4   STT
+                   SRTP media            orchestrator        sarvam-105b LLM + tools
+                                         compliance gate     Bulbul v3   TTS
+                                         guardrail screen
+                                              │
+                                              ├─▶ tools: PTP · payment link · escalate
+                                              ├─▶ Postgres: CDR, transcripts, compliance
+                                              └─▶ post-call: 100% QA scoring → export
+```
+
+Three diagrams in [`docs/`](docs/), editable at [excalidraw.com](https://excalidraw.com):
+`01-overall-architecture` · `02-sip-rtp` · `03-deployment-models`
+(cloud / hybrid / on-premise). Narrative version: [`docs/architecture.md`](docs/architecture.md),
+telephony detail: [`docs/telephony.md`](docs/telephony.md).
 
 ---
 
@@ -45,21 +73,16 @@ Talk to it in your microphone as the borrower. The agent:
 ## Quickstart
 
 ```bash
-# GitHub will prompt you to authenticate because this repository is private.
-# Use GitHub Desktop, SSH, or a personal access token when prompted; do not put
-# a token in the clone URL.
-git clone --branch pipecat-native https://github.com/ktn11003/emi-collections-agent.git
-cd emi-collections-agent
+git clone <this repo> && cd emi-collections-agent
 
-# Python 3.10+ is required (Python 3.12 recommended).
-python3.12 -m venv .venv
-# .venv\Scripts\activate          # Windows
-source .venv/bin/activate          # macOS / Linux
+python -m venv .venv
+.venv/Scripts/activate            # Windows
+# source .venv/bin/activate       # macOS / Linux
 pip install -r requirements.txt
 
 cp .env.example .env              # add SARVAM_API_KEY (see below)
 
-python -m alembic upgrade head     # create the schema
+alembic upgrade head              # create the schema
 python scripts/seed_db.py         # load + scrub the call list
 
 uvicorn app.main:app --app-dir src --reload
@@ -67,11 +90,6 @@ uvicorn app.main:app --app-dir src --reload
 
 Open **<http://127.0.0.1:8000>**, pick a borrower, press **Start call**, and speak.
 The dashboard is at **/dashboard**, the API docs at **/docs**.
-
-The project runs in offline mock mode if `SARVAM_API_KEY` is not set: the
-workflow, database, dashboard and tests all work, but voice/model responses are
-canned. Add your own key to `.env` and restart the server to enable live Sarvam
-models. Do not commit `.env`; it is already ignored by Git.
 
 > Want to build it yourself rather than run it? **[`docs/BUILD-FROM-SCRATCH.md`](docs/BUILD-FROM-SCRATCH.md)**
 > is the full manual walkthrough — every command in order, the four Sarvam API
