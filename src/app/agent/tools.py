@@ -89,7 +89,10 @@ MARK_DISPOSITION = {
                 "loan_id": {"type": "string"},
                 "disposition": {
                     "type": "string",
-                    "enum": ["PTP", "PAID", "DISPUTE", "WRONG_NUMBER", "CALLBACK", "REFUSED", "ESCALATED"],
+                    # Mirrors db.models.Disposition minus INCOMPLETE, which is the
+                    # absence of an outcome and is never something the model picks.
+                    "enum": ["PTP", "PAID", "LINK_SENT", "DISPUTE", "WRONG_NUMBER",
+                             "NO_ANSWER", "CALLBACK", "REFUSED", "ESCALATED"],
                 },
                 "notes": {"type": "string", "description": "Short free-text note for the collections officer."},
             },
@@ -117,12 +120,33 @@ SCHEDULE_CALLBACK = {
     },
 }
 
+END_CALL = {
+    "type": "function",
+    "function": {
+        "name": "end_call",
+        "description": (
+            "Hang up and end the conversation. Call this immediately after mark_disposition, "
+            "once the outcome is recorded and the closing line has been said. This is the ONLY "
+            "way to end a call: without it the line stays open and the conversation restarts."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "loan_id": {"type": "string"},
+                "reason": {"type": "string", "description": "One short line: why the call is ending."},
+            },
+            "required": ["loan_id"],
+        },
+    },
+}
+
 ALL_TOOLS: list[dict[str, Any]] = [
     SEND_PAYMENT_LINK,
     SCHEDULE_PTP,
     ESCALATE_TO_HUMAN,
     MARK_DISPOSITION,
     SCHEDULE_CALLBACK,
+    END_CALL,
 ]
 
 TOOL_NAMES: tuple[str, ...] = tuple(t["function"]["name"] for t in ALL_TOOLS)
@@ -135,4 +159,5 @@ IDEMPOTENT_ON: dict[str, tuple[str, ...]] = {
     "escalate_to_human": ("loan_id", "reason"),
     "mark_disposition": ("loan_id", "disposition"),
     "schedule_callback": ("loan_id", "callback_at"),
+    "end_call": ("loan_id",),
 }
